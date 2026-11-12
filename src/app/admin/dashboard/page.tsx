@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { 
   Calendar, DollarSign, Users, AlertTriangle, Clock, 
-  TrendingUp, Scissors, ShoppingBag, CheckCircle2, Bug 
+  TrendingUp, ShoppingBag, CheckCircle2 
 } from "lucide-react";
 
 interface Booking {
@@ -55,10 +55,6 @@ export default function AdminDashboardPage() {
   const [todayBookingsCount, setTodayBookingsCount] = useState(0);
   const [totalClientsCount, setTotalClientsCount] = useState(0);
 
-  // État de débogage pour voir toutes les réservations brutes reçues
-  const [debugBookings, setDebugBookings] = useState<any[]>([]);
-  const [debugTodayStr, setDebugTodayStr] = useState("");
-
   useEffect(() => {
     fetchDashboardData();
   }, []);
@@ -66,23 +62,37 @@ export default function AdminDashboardPage() {
   async function fetchDashboardData() {
     setLoading(true);
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 1. Récupérer le business_id de l'admin connecté
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("business_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.business_id) {
+      setLoading(false);
+      return;
+    }
+
+    const bizId = profile.business_id;
+
     const localDate = new Date();
     const todayStr = localDate.toLocaleDateString("en-CA"); // Format YYYY-MM-DD local
-    setDebugTodayStr(todayStr);
 
-    // Requêtes séparées et sécurisées (sans jointure SQL complexe)
+    // 2. Requêtes filtrées strictement par business_id
     const [bookingsRes, servicesRes, employeesRes, salesRes, inventoryRes, teamRes] = await Promise.all([
-      supabase.from("bookings").select("*").order("booking_date", { ascending: true }),
-      supabase.from("services").select("*"),
-      supabase.from("employees").select("*"),
-      supabase.from("store_sales").select("*").order("created_at", { ascending: false }),
-      supabase.from("inventory").select("*"),
-      supabase.from("employees").select("*")
+      supabase.from("bookings").select("*").eq("business_id", bizId).order("booking_date", { ascending: true }),
+      supabase.from("services").select("*").eq("business_id", bizId),
+      supabase.from("employees").select("*").eq("business_id", bizId),
+      supabase.from("store_sales").select("*").eq("business_id", bizId).order("created_at", { ascending: false }),
+      supabase.from("inventory").select("*").eq("business_id", bizId),
+      supabase.from("employees").select("*").eq("business_id", bizId)
     ]);
 
     const rawBookings = bookingsRes.data || [];
-    setDebugBookings(rawBookings); // Sauvegarde pour le débogage visuel
-
     const servicesList = servicesRes.data || [];
     const employeesList = employeesRes.data || [];
     const sales: Sale[] = salesRes.data || [];
@@ -104,13 +114,12 @@ export default function AdminDashboardPage() {
       } : undefined
     }));
 
-    // Filtrage assoupli pour le test : on prend tout ce qui correspond à la date du jour (peu importe le statut exact pour l'instant)
+    // Filtrage date du jour
     const todayList = bookings.filter((b) => {
       const bDate = b.booking_date ? b.booking_date.split("T")[0] : "";
       return bDate === todayStr;
     });
 
-    // Celles qui sont 'done'
     const todayDoneList = todayList.filter((b) => {
       const status = (b.status || "").trim().toLowerCase();
       return status === "done" || status === "completed" || status === "terminé";
@@ -172,11 +181,8 @@ export default function AdminDashboardPage() {
       
       <div>
         <h1 className="text-2xl font-black text-slate-900">Tableau de Bord</h1>
-        <p className="text-xs text-slate-500 font-medium">Vue d'ensemble en temps réel de votre salon de coiffure.</p>
+        <p className="text-xs text-slate-500 font-medium">Vue d'ensemble en temps réel de votre salon.</p>
       </div>
-
-     
-      {/* ------------------------------------------------- */}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -256,7 +262,7 @@ export default function AdminDashboardPage() {
             <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Réservations Terminées du jour</h4>
             {todayDoneBookings.length === 0 ? (
               <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded-2xl">
-                Aucune réservation terminée trouvée pour aujourd'hui. Regardez le panneau orange ci-dessus pour comparer la "Date DB" avec la "Date calculée".
+                Aucune réservation terminée trouvée pour aujourd'hui.
               </p>
             ) : (
               <div className="divide-y divide-slate-100 border border-slate-100 rounded-2xl p-4 bg-slate-50/50">
@@ -271,7 +277,7 @@ export default function AdminDashboardPage() {
                       </div>
                       <p className="text-[11px] text-slate-400 flex items-center gap-2">
                         <span>🕒 {b.start_time}</span>
-                        <span>• Coiffé par {b.employees?.name || "Non assigné"}</span>
+                        <span>Coiffé par {b.employees?.name || "Non assigné"}</span>
                       </p>
                     </div>
 

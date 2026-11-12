@@ -23,6 +23,7 @@ interface Business {
 
 interface Service {
   id: string;
+  business_id: string;
   name: string;
   category: string;
   duration_minutes: number;
@@ -31,6 +32,7 @@ interface Service {
 
 interface Staff {
   id: string;
+  business_id: string;
   name: string;
   color_code: string;
 }
@@ -66,6 +68,7 @@ function BookingPortalContent() {
   const [clientEmail, setClientEmail] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('onsite');
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const getThemeHex = (palette?: string) => {
     switch (palette) {
@@ -80,13 +83,15 @@ function BookingPortalContent() {
     async function fetchPortalData() {
       if (!slug) return;
 
+      // 1. Récupérer l'entreprise depuis la table "businesses" avec .maybeSingle() au lieu de .single()
       const { data: bizData, error: bizError } = await supabase
-        .from('business_settings')
+        .from('businesses')
         .select('*')
         .eq('slug', slug)
-        .single();
+        .maybeSingle(); // Évite l'erreur si 0 ou plusieurs lignes correspondent
 
       if (bizError || !bizData) {
+        console.error("Erreur chargement business:", bizError?.message || "Salon introuvable");
         setLoading(false);
         return;
       }
@@ -99,16 +104,20 @@ function BookingPortalContent() {
       const slots: string[] = [];
       for (let h = openHour; h < closeHour; h++) {
         slots.push(`${String(h).padStart(2, '0')}:00`);
-        slots.push(`${String(h).padStart(2, '0')}:30`); // Intervalles de 30 min pour plus de précision
+        slots.push(`${String(h).padStart(2, '0')}:30`);
       }
       setTimeSlots(slots);
 
-      const { data: srvData } = await supabase.from('services').select('*');
-      const { data: stfData } = await supabase.from('employees').select('*');
+      // 2. Récupérer les services et l'équipe filtrés par business_id 🔒
+      const [srvRes, stfRes] = await Promise.all([
+        supabase.from('services').select('*').eq('business_id', bizData.id).order('name'),
+        supabase.from('employees').select('*').eq('business_id', bizData.id).order('name')
+      ]);
 
-      setServices(srvData || []);
-      const formattedStaff = (stfData || []).map((emp: any) => ({
+      setServices(srvRes.data || []);
+      const formattedStaff = (stfRes.data || []).map((emp: any) => ({
         id: emp.id,
+        business_id: emp.business_id,
         name: emp.name,
         color_code: emp.color || '#3b82f6'
       }));
@@ -118,11 +127,10 @@ function BookingPortalContent() {
 
     fetchPortalData();
   }, [slug, supabase]);
-
-  // Récupère les réservations de l'employé sélectionné pour la date choisie
+  // Récupère les réservations de l'employé sélectionné pour la date choisie (filtré par business_id)
   useEffect(() => {
     async function fetchStaffBookings() {
-      if (!selectedDate || !selectedStaff) {
+      if (!selectedDate || !selectedStaff || !business) {
         setExistingBookings([]);
         return;
       }
@@ -131,6 +139,7 @@ function BookingPortalContent() {
       const { data } = await supabase
         .from('bookings')
         .select('start_time, end_time')
+        .eq('business_id', business.id)
         .eq('employee_id', selectedStaff.id)
         .eq('booking_date', selectedDate)
         .neq('status', 'canceled');
@@ -144,64 +153,73 @@ function BookingPortalContent() {
     }
 
     fetchStaffBookings();
-  }, [selectedDate, selectedStaff, supabase]);
+  }, [selectedDate, selectedStaff, business, supabase]);
 
   const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!business || !selectedService || !selectedStaff) return;
+    setSubmitting(true);
 
-    let clientId;
-    const { data: existingClient } = await supabase
-      .from('clients')
-      .select('id')
-      .eq('phone', clientPhone)
-      .single();
-
-    if (existingClient) {
-      clientId = existingClient.id;
-    } else {
-      const { data: newClient, error: clientError } = await supabase
+    try {
+      // 1. Vérifier ou créer le client pour ce business_id
+      let clientId;
+      const { data: existingClient } = await supabase
         .from('clients')
-        .insert({
-          full_name: clientName,
-          phone: clientPhone,
-          email: clientEmail,
-        })
-        .select()
-        .single();
+        .select('id')
+        .eq('business_id', business.id)
+        .eq('phone', clientPhone)
+        .maybeSingle();
 
-      if (clientError || !newClient) {
-        alert("Erreur lors de l'enregistrement du client : " + clientError?.message);
-        return;
+      if (existingClient) {
+        clientId = existingClient.id;
+      } else {
+        const { data: newClient, error: clientError } = await supabase
+          .from('clients')
+          .insert({
+            business_id: business.id,
+            full_name: clientName,
+            phone: clientPhone,
+            email: clientEmail,
+          })
+          .select()
+          .single();
+
+        if (clientError || !newClient) {
+          throw new Error("Erreur lors de l'enregistrement du client : " + clientError?.message);
+        }
+        clientId = newClient.id;
       }
-      clientId = newClient.id;
-    }
 
-    const [h, m] = selectedTime.split(':').map(Number);
-    const startMins = h * 60 + m;
-    const endMins = startMins + selectedService.duration_minutes;
-    const endH = Math.floor(endMins / 60);
-    const endM = endMins % 60;
-    const formattedEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+      const [h, m] = selectedTime.split(':').map(Number);
+      const startMins = h * 60 + m;
+      const endMins = startMins + selectedService.duration_minutes;
+      const endH = Math.floor(endMins / 60);
+      const endM = endMins % 60;
+      const formattedEndTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 
-    const { error: bookingError } = await supabase.from('bookings').insert({
-      client_name: clientName,
-      client_whatsapp: clientPhone,
-      client_id: clientId,
-      service_id: selectedService.id,
-      employee_id: selectedStaff.id,
-      booking_date: selectedDate,
-      start_time: selectedTime,
-      end_time: formattedEndTime,
-      status: 'still',
-      is_walk_in: false,
-      total_price: selectedService.price,
-    });
+      // 2. Insérer la réservation avec le business_id 🔒
+      const { error: bookingError } = await supabase.from('bookings').insert({
+        business_id: business.id,
+        client_name: clientName,
+        client_whatsapp: clientPhone,
+        client_id: clientId,
+        service_id: selectedService.id,
+        employee_id: selectedStaff.id,
+        booking_date: selectedDate,
+        start_time: selectedTime,
+        end_time: formattedEndTime,
+        status: 'still',
+        is_walk_in: false,
+        total_price: selectedService.price,
+      });
 
-    if (bookingError) {
-      alert("Erreur lors de la réservation : " + bookingError.message);
-    } else {
+      if (bookingError) throw new Error(bookingError.message);
+
       setBookingSuccess(true);
+    } catch (err: any) {
+      alert("Erreur lors de la réservation : " + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -234,10 +252,10 @@ function BookingPortalContent() {
         <div className="absolute bottom-6 left-6 z-20 text-white max-w-2xl">
           <h1 className="text-3xl font-bold">{business.name}</h1>
           {business.description && (
-            <p className="text-sm text-slate-200 mt-1 line-clamp-2">{business.description} </p>
+            <p className="text-sm text-slate-200 mt-1 line-clamp-2">{business.description}</p>
           )}
           
-          <div className="flex items-center gap-4 text-xs text-slate-300 mt-3">
+          <div className="flex items-center gap-4 text-xs text-slate-300 mt-3 flex-wrap">
             {business.location && (
               business.maps_url ? (
                 <a href={business.maps_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:underline">
@@ -248,9 +266,7 @@ function BookingPortalContent() {
               )
             )}
             
-          </div>
-          <div className="flex items-center gap-4 text-xs text-slate-300 mt-3">
-          {business.whatsapp_number && (
+            {business.whatsapp_number && (
               <a
                 href={`https://wa.me/${business.whatsapp_number}`}
                 target="_blank"
@@ -260,7 +276,7 @@ function BookingPortalContent() {
                 <Phone size={14} /> {business.whatsapp_number}
               </a>
             )}
-            </div>
+          </div>
         </div>
       </div>
 
@@ -275,7 +291,7 @@ function BookingPortalContent() {
             <p className="text-slate-600 mb-6">Un récapitulatif a été enregistré. Nous avons hâte de vous accueillir.</p>
             <button 
               onClick={() => window.location.reload()} 
-              className="text-white px-6 py-2.5 rounded-xl font-medium transition shadow-sm"
+              className="text-white px-6 py-2.5 rounded-xl font-medium transition shadow-sm cursor-pointer"
               style={{ backgroundColor: primaryColorHex }}
             >
               Effectuer une autre réservation
@@ -294,68 +310,76 @@ function BookingPortalContent() {
             {step === 1 && (
               <div>
                 <h2 className="text-xl font-bold text-slate-900 mb-6">Choisissez une prestation</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {services.map((service) => (
-                    <div
-                      key={service.id}
-                      onClick={() => {
-                        setSelectedService(service);
-                        setStep(2);
-                      }}
-                      className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition cursor-pointer flex flex-col justify-between group"
-                    >
-                      <div>
-                        <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition">{service.name}</h3>
-                        <p className="text-xs text-slate-500 mt-1">{service.category}</p>
+                {services.length === 0 ? (
+                  <p className="text-xs text-slate-400">Aucun service disponible pour le moment.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {services.map((service) => (
+                      <div
+                        key={service.id}
+                        onClick={() => {
+                          setSelectedService(service);
+                          setStep(2);
+                        }}
+                        className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition cursor-pointer flex flex-col justify-between group"
+                      >
+                        <div>
+                          <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition">{service.name}</h3>
+                          <p className="text-xs text-slate-500 mt-1">{service.category}</p>
+                        </div>
+                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 text-sm">
+                          <span className="flex items-center gap-1 text-slate-600"><Clock size={14} /> {service.duration_minutes} min</span>
+                          <span className="font-bold" style={{ color: primaryColorHex }}>{service.price} TND</span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 text-sm">
-                        <span className="flex items-center gap-1 text-slate-600"><Clock size={14} /> {service.duration_minutes} min</span>
-                        <span className="font-bold" style={{ color: primaryColorHex }}>{service.price} TND</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ÉTAPE 2 : Fusion (Professionnel + Date + Créneaux Anti-Collision dynamiques) */}
+            {/* ÉTAPE 2 : Professionnel + Date + Créneaux */}
             {step === 2 && (
               <div>
                 <h2 className="text-xl font-bold text-slate-900 mb-6">Choisissez un professionnel, une date et un créneau</h2>
                 
                 {/* 1. Sélection de l'employé */}
                 <div className="mb-6">
-                  <label className="block text-xs font-semibold text-slate-600 mb-2">1. Sélectionnez l'expert</label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {staffList.map((staff) => {
-                      const isSelected = selectedStaff?.id === staff.id;
-                      return (
-                        <div
-                          key={staff.id}
-                          onClick={() => {
-                            setSelectedStaff(staff);
-                            setSelectedTime(''); // Réinitialise l'heure si l'employé change
-                          }}
-                          style={{
-                            borderColor: isSelected ? primaryColorHex : '#e2e8f0',
-                            backgroundColor: isSelected ? `${staff.color_code}10` : '#ffffff',
-                          }}
-                          className="border rounded-xl p-3 hover:shadow-sm transition cursor-pointer flex items-center gap-3"
-                        >
-                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: staff.color_code }}>
-                            {staff.name.substring(0, 2).toUpperCase()}
+                  <label className="block text-xs font-semibold text-slate-600 mb-2">Sélectionnez l'expert</label>
+                  {staffList.length === 0 ? (
+                    <p className="text-xs text-slate-400">Aucun membre d'équipe enregistré.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {staffList.map((staff) => {
+                        const isSelected = selectedStaff?.id === staff.id;
+                        return (
+                          <div
+                            key={staff.id}
+                            onClick={() => {
+                              setSelectedStaff(staff);
+                              setSelectedTime('');
+                            }}
+                            style={{
+                              borderColor: isSelected ? primaryColorHex : '#e2e8f0',
+                              backgroundColor: isSelected ? `${staff.color_code}10` : '#ffffff',
+                            }}
+                            className="border rounded-xl p-3 hover:shadow-sm transition cursor-pointer flex items-center gap-3"
+                          >
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0" style={{ backgroundColor: staff.color_code }}>
+                              {staff.name.substring(0, 2).toUpperCase()}
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-slate-900 text-sm">{staff.name}</h3>
+                              <p className="text-[10px] text-slate-500">Disponible</p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="font-bold text-slate-900 text-sm">{staff.name}</h3>
-                            <p className="text-[10px] text-slate-500">Disponible</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                {/* 2. Sélection de la date et affichage des disponibilités en temps réel */}
+                {/* 2. Sélection de la date et affichage des disponibilités */}
                 {selectedStaff && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
                     <div>
@@ -384,23 +408,19 @@ function BookingPortalContent() {
                           const closeHour = parseInt(business.working_hours?.end ? business.working_hours.end.split(':')[0] : '18', 10);
                           const closeMinutes = closeHour * 60;
 
-                          // Filtrage strict : exclut tout créneau qui chevauche une réservation existante ou dépasse l'heure de fermeture
                           const availableSlots = timeSlots.filter((time) => {
                             const [h, m] = time.split(':').map(Number);
                             const slotStartMins = h * 60 + m;
                             const slotEndMins = slotStartMins + serviceDuration;
 
-                            // Vérifie si le service dépasse l'heure de fermeture
                             if (slotEndMins > closeMinutes) return false;
 
-                            // Vérifie la collision avec chaque réservation existante pour cet employé
                             const hasCollision = existingBookings.some((booking) => {
                               const [bH, bM] = booking.start_time.split(':').map(Number);
                               const [eH, eM] = booking.end_time.split(':').map(Number);
                               const bStartMins = bH * 60 + bM;
                               const bEndMins = eH * 60 + eM;
 
-                              // Condition de chevauchement d'intervalles
                               return slotStartMins < bEndMins && slotEndMins > bStartMins;
                             });
 
@@ -425,7 +445,7 @@ function BookingPortalContent() {
                                       color: isSelected ? '#ffffff' : '#334155',
                                       borderColor: isSelected ? primaryColorHex : '#cbd5e1'
                                     }}
-                                    className="py-2 text-xs font-medium rounded-lg border transition hover:bg-slate-100 shadow-2xs"
+                                    className="py-2 text-xs font-medium rounded-lg border transition hover:bg-slate-100 shadow-2xs cursor-pointer"
                                   >
                                     {time}
                                   </button>
@@ -440,12 +460,12 @@ function BookingPortalContent() {
                 )}
 
                 <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-                  <button onClick={() => setStep(1)} className="text-sm text-slate-500 hover:underline">← Retour aux services</button>
+                  <button onClick={() => setStep(1)} className="text-sm text-slate-500 hover:underline cursor-pointer">← Retour aux services</button>
                   <button
                     disabled={!selectedStaff || !selectedDate || !selectedTime}
                     onClick={() => setStep(3)}
                     style={{ backgroundColor: primaryColorHex }}
-                    className="text-white px-6 py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 transition shadow-sm"
+                    className="text-white px-6 py-2.5 rounded-xl text-sm font-medium disabled:opacity-50 transition shadow-sm cursor-pointer"
                   >
                     Continuer
                   </button>
@@ -473,7 +493,7 @@ function BookingPortalContent() {
                       onChange={(e) => setClientName(e.target.value)}
                       required
                       placeholder="Votre nom"
-                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
+                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 bg-slate-50"
                     />
                   </div>
                   <div>
@@ -484,7 +504,7 @@ function BookingPortalContent() {
                       onChange={(e) => setClientPhone(e.target.value)}
                       required
                       placeholder="+216 XX XXX XXX"
-                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
+                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 bg-slate-50"
                     />
                   </div>
                   <div>
@@ -494,7 +514,7 @@ function BookingPortalContent() {
                       value={clientEmail}
                       onChange={(e) => setClientEmail(e.target.value)}
                       placeholder="votre@email.com"
-                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2"
+                      className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 bg-slate-50"
                     />
                   </div>
                   <div>
@@ -511,12 +531,13 @@ function BookingPortalContent() {
                 </div>
 
                 <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-                  <button type="button" onClick={() => setStep(2)} className="text-sm text-slate-500 hover:underline">← Retour</button>
+                  <button type="button" onClick={() => setStep(2)} className="text-sm text-slate-500 hover:underline cursor-pointer">← Retour</button>
                   <button 
                     type="submit" 
-                    className="bg-emerald-600 text-white px-8 py-3 rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-sm"
+                    disabled={submitting}
+                    className="bg-emerald-600 text-white px-8 py-3 rounded-xl text-sm font-bold hover:bg-emerald-700 transition shadow-sm cursor-pointer disabled:opacity-50"
                   >
-                    Confirmer le rendez-vous
+                    {submitting ? "Validation..." : "Confirmer le rendez-vous"}
                   </button>
                 </div>
               </form>

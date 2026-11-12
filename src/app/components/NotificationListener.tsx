@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export interface AppNotification {
@@ -14,8 +14,32 @@ export interface AppNotification {
 
 export default function NotificationListener() {
   const supabase = createClient();
+  const [businessId, setBusinessId] = useState<string | null>(null);
 
+  // 1. Récupérer le business_id de l'admin connecté au chargement
   useEffect(() => {
+    async function initBusiness() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("business_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.business_id) {
+        setBusinessId(profile.business_id);
+      }
+    }
+
+    initBusiness();
+  }, [supabase]);
+
+  // 2. Initialiser les abonnements Realtime une fois le businessId connu
+  useEffect(() => {
+    if (!businessId) return;
+
     const dispatchAppNotification = (title: string, message: string, type: "booking" | "sale" | "inventory") => {
       const newNotification: AppNotification = {
         id: Date.now().toString(),
@@ -30,12 +54,17 @@ export default function NotificationListener() {
       window.dispatchEvent(new CustomEvent("booki:new-notification", { detail: newNotification }));
     };
 
-    // Écouter les nouvelles réservations
+    // Écouter les nouvelles réservations pour ce business_id 🔒
     const bookingChannel = supabase
-      .channel("realtime-bookings-ui")
+      .channel(`realtime-bookings-ui-${businessId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "bookings" },
+        { 
+          event: "INSERT", 
+          schema: "public", 
+          table: "bookings",
+          filter: `business_id=eq.${businessId}`
+        },
         (payload) => {
           const b = payload.new;
           dispatchAppNotification(
@@ -47,12 +76,17 @@ export default function NotificationListener() {
       )
       .subscribe();
 
-    // Écouter les nouvelles ventes
+    // Écouter les nouvelles ventes pour ce business_id 🔒
     const salesChannel = supabase
-      .channel("realtime-sales-ui")
+      .channel(`realtime-sales-ui-${businessId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "store_sales" },
+        { 
+          event: "INSERT", 
+          schema: "public", 
+          table: "store_sales",
+          filter: `business_id=eq.${businessId}`
+        },
         (payload) => {
           const s = payload.new;
           dispatchAppNotification(
@@ -64,12 +98,17 @@ export default function NotificationListener() {
       )
       .subscribe();
 
-    // Écouter les alertes de stock bas
+    // Écouter les alertes de stock bas pour ce business_id 🔒
     const inventoryChannel = supabase
-      .channel("realtime-inventory-ui")
+      .channel(`realtime-inventory-ui-${businessId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "inventory" },
+        { 
+          event: "UPDATE", 
+          schema: "public", 
+          table: "inventory",
+          filter: `business_id=eq.${businessId}`
+        },
         (payload) => {
           const item = payload.new;
           if (item.quantity <= item.min_alert) {
@@ -88,7 +127,7 @@ export default function NotificationListener() {
       supabase.removeChannel(salesChannel);
       supabase.removeChannel(inventoryChannel);
     };
-  }, [supabase]);
+  }, [businessId, supabase]);
 
   return null;
 }

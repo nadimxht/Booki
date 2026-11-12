@@ -10,6 +10,7 @@ import {
 
 interface StoreProduct {
   id: string;
+  business_id: string;
   name: string;
   description: string;
   price: number;
@@ -27,6 +28,7 @@ interface SaleItem {
 
 interface Sale {
   id: string;
+  business_id: string;
   created_at: string;
   invoice_number: string;
   pickup_code: string;
@@ -34,7 +36,7 @@ interface Sale {
   client_phone: string;
   total_amount: number;
   payment_method: string;
-  status: string; // 'pending' ou 'paid'
+  status: string; // 'pending', 'paid', 'canceled'
   items: SaleItem[];
 }
 
@@ -54,6 +56,7 @@ const COVER_PRESETS = [
 
 export default function AdminStorePage() {
   const supabase = createClient();
+  const [businessId, setBusinessId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"products" | "sales" | "invoices" | "design">("sales");
 
   const [products, setProducts] = useState<StoreProduct[]>([]);
@@ -83,15 +86,38 @@ export default function AdminStorePage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    initBusinessAndData();
   }, []);
 
-  async function fetchData() {
+  async function initBusinessAndData() {
     setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("business_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.business_id) {
+      setLoading(false);
+      return;
+    }
+
+    const bizId = profile.business_id;
+    setBusinessId(bizId);
+    fetchData(bizId);
+  }
+
+  async function fetchData(bizId: string) {
     const [prodRes, salesRes, designRes] = await Promise.all([
-      supabase.from("store_products").select("*").order("name"),
-      supabase.from("store_sales").select("*").order("created_at", { ascending: false }),
-      supabase.from("store_settings").select("*").eq("id", 1).single()
+      supabase.from("store_products").select("*").eq("business_id", bizId).order("name"),
+      supabase.from("store_sales").select("*").eq("business_id", bizId).order("created_at", { ascending: false }),
+      supabase.from("store_settings").select("*").eq("business_id", bizId).maybeSingle()
     ]);
 
     if (prodRes.data) setProducts(prodRes.data);
@@ -109,44 +135,42 @@ export default function AdminStorePage() {
     setLoading(false);
   }
 
-  // --- ACTIONS DE VALIDATION DE COMMANDE (CLICK & COLLECT) ---
   async function handleMarkAsPaid(sale: Sale) {
+    if (!businessId) return;
     if (!confirm(`Confirmer l'encaissement de la commande ${sale.invoice_number} pour ${sale.client_name} ?`)) return;
 
     try {
-      // 1. Mettre à jour le statut de la vente à "paid"
       const { error: saleError } = await supabase
         .from("store_sales")
         .update({ status: "paid" })
-        .eq("id", sale.id);
+        .eq("id", sale.id)
+        .eq("business_id", businessId);
 
       if (saleError) throw new Error(saleError.message);
 
-      // 2. Déduire le stock des produits commandés
       if (sale.items && Array.isArray(sale.items)) {
         for (const item of sale.items) {
           if (item.product_id) {
-            // Trouver le produit actuel pour déduire correctement
             const prod = products.find(p => p.id === item.product_id);
             if (prod) {
               const newStock = Math.max(0, prod.stock - item.quantity);
               await supabase
                 .from("store_products")
                 .update({ stock: newStock })
-                .eq("id", item.product_id);
+                .eq("id", item.product_id)
+                .eq("business_id", businessId);
             }
           }
         }
       }
 
       alert("Commande encaissée et stock déduit avec succès !");
-      fetchData();
+      fetchData(businessId);
     } catch (err: any) {
       alert("Erreur lors de la validation : " + err.message);
     }
   }
 
-  // --- PRODUCT ACTIONS ---
   const openProductModalForCreate = () => {
     setEditingProductId(null);
     setPName("");
@@ -171,9 +195,11 @@ export default function AdminStorePage() {
 
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
+    if (!businessId) return;
     setSaving(true);
 
     const payload = {
+      business_id: businessId,
       name: pName,
       description: pDescription,
       price: parseFloat(pPrice) || 0,
@@ -184,7 +210,7 @@ export default function AdminStorePage() {
 
     let error;
     if (editingProductId) {
-      const res = await supabase.from("store_products").update(payload).eq("id", editingProductId);
+      const res = await supabase.from("store_products").update(payload).eq("id", editingProductId).eq("business_id", businessId);
       error = res.error;
     } else {
       const res = await supabase.from("store_products").insert([payload]);
@@ -196,34 +222,34 @@ export default function AdminStorePage() {
       alert("Erreur lors de l'enregistrement : " + error.message);
     } else {
       setIsProductModalOpen(false);
-      fetchData();
+      fetchData(businessId);
     }
   }
 
   async function handleDeleteProduct(id: string) {
+    if (!businessId) return;
     if (!confirm("Voulez-vous vraiment supprimer ce produit ?")) return;
-    await supabase.from("store_products").delete().eq("id", id);
-    fetchData();
+    await supabase.from("store_products").delete().eq("id", id).eq("business_id", businessId);
+    fetchData(businessId);
   }
 
-  // --- DESIGN ACTIONS ---
   async function handleSaveDesign(e: React.FormEvent) {
     e.preventDefault();
+    if (!businessId) return;
     setSaving(true);
 
     const { error } = await supabase
       .from("store_settings")
-      .upsert({ id: 1, ...design });
+      .upsert({ business_id: businessId, ...design }, { onConflict: "business_id" });
 
     setSaving(false);
     if (error) {
       alert("Erreur de sauvegarde du design : " + error.message);
     } else {
-      alert("Design de la boutique mis à jour !");
+      alert("Design de la boutique mis à jour avec succès !");
     }
   }
 
-  // Ventes filtrées par recherche (Nom ou Code de retrait)
   const filteredSales = sales.filter(s => {
     const query = searchQuery.toLowerCase();
     const matchName = s.client_name?.toLowerCase().includes(query) || false;
@@ -232,7 +258,6 @@ export default function AdminStorePage() {
     return matchName || matchCode || matchInvoice;
   });
 
-  // Calcul du Chiffre d'Affaires uniquement pour les ventes payées
   const totalSalesRevenue = sales
     .filter(s => s.status === "paid")
     .reduce((acc, curr) => acc + (Number(curr.total_amount) || 0), 0);
@@ -243,7 +268,6 @@ export default function AdminStorePage() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      
       {/* En-tête & Onglets */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -256,7 +280,7 @@ export default function AdminStorePage() {
         <div className="flex bg-slate-200/70 p-1 rounded-2xl w-fit flex-wrap">
           <button
             onClick={() => setActiveTab("sales")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               activeTab === "sales" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -264,7 +288,7 @@ export default function AdminStorePage() {
           </button>
           <button
             onClick={() => setActiveTab("products")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               activeTab === "products" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -272,7 +296,7 @@ export default function AdminStorePage() {
           </button>
           <button
             onClick={() => setActiveTab("invoices")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               activeTab === "invoices" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -280,7 +304,7 @@ export default function AdminStorePage() {
           </button>
           <button
             onClick={() => setActiveTab("design")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               activeTab === "design" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -289,7 +313,7 @@ export default function AdminStorePage() {
         </div>
       </div>
 
-      {/* --- ONGLET COMMANDES & VENTES (CLICK & COLLECT) --- */}
+      {/* --- ONGLET COMMANDES & VENTES --- */}
       {activeTab === "sales" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -325,69 +349,75 @@ export default function AdminStorePage() {
               <div className="p-12 text-center text-slate-400 text-xs">Aucune commande trouvée.</div>
             ) : (
               <div className="divide-y divide-slate-100">
-               {filteredSales.map((sale) => {
-  // Calculer si la commande a plus de 7 jours et est toujours en attente
-  const createdAt = new Date(sale.created_at);
-  const now = new Date();
-  const diffDays = (now.getTime() - createdAt.getTime()) / (1000 * 3600 * 24);
-  const isOverdue = sale.status === 'pending' && diffDays > 7;
+                {filteredSales.map((sale) => {
+                  const createdAt = new Date(sale.created_at);
+                  const now = new Date();
+                  const diffDays = (now.getTime() - createdAt.getTime()) / (1000 * 3600 * 24);
+                  const isOverdue = sale.status === 'pending' && diffDays > 7;
 
-  return (
-    <div key={sale.id} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div className="space-y-1">
-        <div className="flex items-center gap-3">
-          <span className="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-xl flex items-center gap-1 font-mono">
-            <Ticket size={14} /> {sale.pickup_code || "N/A"}
-          </span>
-          <h4 className="font-bold text-xs text-slate-900">{sale.client_name}</h4>
-          
-          {/* Badge de statut ou d'expiration */}
-          {isOverdue ? (
-            <span className="bg-rose-100 text-rose-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-full animate-pulse">
-              ⚠️ Non récupéré ({'>'} 7 jours)
-            </span>
-          ) : (
-            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-              sale.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
-              sale.status === 'canceled' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-700'
-            }`}>
-              {sale.status === 'paid' ? 'Payé & Terminé' : sale.status === 'canceled' ? 'Annulé' : 'En attente'}
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] text-slate-500">
-          📞 {sale.client_phone} • Créé le : {new Date(sale.created_at).toLocaleDateString("fr-FR")} ({Math.floor(diffDays)} jours)
-        </p>
-      </div>
+                  return (
+                    <div key={sale.id} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-3">
+                          <span className="bg-indigo-600 text-white text-xs font-black px-2.5 py-1 rounded-xl flex items-center gap-1 font-mono">
+                            <Ticket size={14} /> {sale.pickup_code || "N/A"}
+                          </span>
+                          <h4 className="font-bold text-xs text-slate-900">{sale.client_name}</h4>
+                          
+                          {isOverdue ? (
+                            <span className="bg-rose-100 text-rose-700 text-[9px] font-black uppercase px-2 py-0.5 rounded-full animate-pulse">
+                              ⚠️ Non récupéré ({'>'} 7 jours)
+                            </span>
+                          ) : (
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              sale.status === 'paid' ? 'bg-emerald-100 text-emerald-700' :
+                              sale.status === 'canceled' ? 'bg-slate-100 text-slate-500' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {sale.status === 'paid' ? 'Payé & Terminé' : sale.status === 'canceled' ? 'Annulé' : 'En attente'}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          📞 {sale.client_phone} | Créé le : {new Date(sale.created_at).toLocaleDateString("fr-FR")} ({Math.floor(diffDays)} jours)
+                        </p>
+                      </div>
 
-      <div className="flex items-center gap-3 justify-end">
-        <span className="font-black text-sm text-slate-900">{sale.total_amount} TND</span>
+                      <div className="flex items-center gap-3 justify-end">
+                        <span className="font-black text-sm text-slate-900">{sale.total_amount} TND</span>
 
-        {sale.status === 'pending' && (
-          <>
-            <button
-              onClick={() => handleMarkAsPaid(sale)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-            >
-              <CheckCircle2 size={15} /> Encaisser
-            </button>
-            <button
-              onClick={async () => {
-                if (confirm("Voulez-vous annuler cette commande expirée ou non récupérée ?")) {
-                  await supabase.from("store_sales").update({ status: "canceled" }).eq("id", sale.id);
-                  fetchData();
-                }
-              }}
-              className="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2.5 rounded-xl text-xs font-bold transition border border-rose-200"
-            >
-              Annuler
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-})}
+                        <button
+                          onClick={() => setSelectedSaleForInvoice(sale)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                        >
+                          <FileText size={14} /> Facture
+                        </button>
+
+                        {sale.status === 'pending' && (
+                          <>
+                            <button
+                              onClick={() => handleMarkAsPaid(sale)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                            >
+                              <CheckCircle2 size={15} /> Encaisser
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!businessId) return;
+                                if (confirm("Voulez-vous annuler cette commande expirée ou non récupérée ?")) {
+                                  await supabase.from("store_sales").update({ status: "canceled" }).eq("id", sale.id).eq("business_id", businessId);
+                                  fetchData(businessId);
+                                }
+                              }}
+                              className="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2.5 rounded-xl text-xs font-bold transition border border-rose-200 cursor-pointer"
+                            >
+                              Annuler
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -401,7 +431,7 @@ export default function AdminStorePage() {
             <h2 className="font-bold text-sm text-slate-900">Catalogue Produits</h2>
             <button
               onClick={openProductModalForCreate}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer"
             >
               <Plus size={16} /> Ajouter un produit
             </button>
@@ -437,10 +467,10 @@ export default function AdminStorePage() {
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <button onClick={() => openProductModalForEdit(prod)} className="p-2 hover:bg-white rounded-xl text-slate-500 transition shadow-2xs" title="Modifier">
+                    <button onClick={() => openProductModalForEdit(prod)} className="p-2 hover:bg-white rounded-xl text-slate-500 transition shadow-2xs cursor-pointer" title="Modifier">
                       <Edit size={14} />
                     </button>
-                    <button onClick={() => handleDeleteProduct(prod.id)} className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition" title="Supprimer">
+                    <button onClick={() => handleDeleteProduct(prod.id)} className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition cursor-pointer" title="Supprimer">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -521,7 +551,7 @@ export default function AdminStorePage() {
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button
                   onClick={() => window.print()}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
                 >
                   Imprimer / Télécharger PDF
                 </button>
@@ -622,7 +652,7 @@ export default function AdminStorePage() {
             <button
               type="submit"
               disabled={saving}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm transition"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
             >
               {saving ? "Sauvegarde..." : "Enregistrer le Design"}
             </button>
@@ -630,56 +660,81 @@ export default function AdminStorePage() {
         </form>
       )}
 
-      {/* --- MODAL PRODUIT --- */}
+      {/* --- MODAL PRODUIT CORRIGÉ --- */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h2 className="font-bold text-base text-slate-900">{editingProductId ? "Modifier le produit" : "Ajouter un produit au Store"}</h2>
-              <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500"><X size={18} /></button>
-            </div>
+  <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl space-y-6 max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <h2 className="font-bold text-base text-slate-900">{editingProductId ? "Modifier le produit" : "Ajouter un produit au Store"}</h2>
+        <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 cursor-pointer"><X size={18} /></button>
+      </div>
 
-            <form onSubmit={handleSaveProduct} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">Nom du produit</label>
-                <input type="text" value={pName} onChange={(e) => setPName(e.target.value)} placeholder="ex: Shampoing Hydratant 500ml" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
-              </div>
+      <form onSubmit={handleSaveProduct} className="space-y-4">
+        <div>
+          <label className="block text-[11px] font-bold text-slate-600 mb-1">Nom du produit</label>
+          <input type="text" value={pName} onChange={(e) => setPName(e.target.value)} placeholder="ex: Shampoing Hydratant 500ml" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
+        </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Prix de vente (TND)</label>
-                  <input type="number" step="0.01" value={pPrice} onChange={(e) => setPPrice(e.target.value)} placeholder="ex: 35.00" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Stock disponible</label>
-                  <input type="number" value={pStock} onChange={(e) => setPStock(e.target.value)} placeholder="ex: 15" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">Catégorie</label>
-                <input type="text" value={pCategory} onChange={(e) => setPCategory(e.target.value)} placeholder="ex: Soins, Huiles, Matériel" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">URL de l'image du produit</label>
-                <input type="url" value={pImageUrl} onChange={(e) => setPImageUrl(e.target.value)} placeholder="https://images.unsplash.com/..." className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">Description</label>
-                <textarea rows={3} value={pDescription} onChange={(e) => setPDescription(e.target.value)} placeholder="Avantages du produit..." className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setIsProductModalOpen(false)} className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-xl text-xs font-bold">Annuler</button>
-                <button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm">{saving ? "Enregistrement..." : "Enregistrer"}</button>
-              </div>
-            </form>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Prix de vente (TND)</label>
+            <input type="number" step="0.01" value={pPrice} onChange={(e) => setPPrice(e.target.value)} placeholder="ex: 35.00" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Stock disponible</label>
+            <input type="number" value={pStock} onChange={(e) => setPStock(e.target.value)} placeholder="ex: 15" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
           </div>
         </div>
-      )}
 
+        <div>
+          <label className="block text-[11px] font-bold text-slate-600 mb-1">Catégorie</label>
+          <input type="text" value={pCategory} onChange={(e) => setPCategory(e.target.value)} placeholder="ex: Soins Capillaires" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
+        </div>
+
+        {/* Suggestions d'images Unsplash cliquables */}
+        <div className="space-y-2">
+          <label className="block text-[11px] font-bold text-slate-600">Suggestions d'images (Cliquez pour appliquer)</label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { name: "Shampoing Pro", url: "https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&w=600&q=80" },
+              { name: "Flacon Cosméto", url: "https://images.unsplash.com/photo-1526947425960-945c6e72858f?auto=format&fit=crop&w=600&q=80" },
+            ].map((preset, idx) => (
+              <div
+                key={idx}
+                onClick={() => setPImageUrl(preset.url)}
+                className={`cursor-pointer group relative rounded-xl overflow-hidden border-2 transition ${
+                  pImageUrl === preset.url ? "border-indigo-600 ring-2 ring-indigo-600/20" : "border-slate-200 hover:border-slate-300"
+                }`}
+              >
+                <img src={preset.url} alt={preset.name} className="w-full h-14 object-cover group-hover:scale-105 transition duration-300" />
+                <div className="absolute inset-0 bg-slate-900/40 flex items-end p-1">
+                  <span className="text-[9px] font-bold text-white truncate">{preset.name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-bold text-slate-600 mb-1">URL de l'image (Optionnel)</label>
+          <input type="url" value={pImageUrl} onChange={(e) => setPImageUrl(e.target.value)} placeholder="https://..." className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-bold text-slate-600 mb-1">Description</label>
+          <textarea value={pDescription} onChange={(e) => setPDescription(e.target.value)} placeholder="Description détaillée..." className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium h-20 resize-none" />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+          <button type="button" onClick={() => setIsProductModalOpen(false)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition cursor-pointer">Annuler</button>
+          <button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer">
+            {saving ? "Enregistrement..." : "Enregistrer"}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+)}
     </div>
   );
 }

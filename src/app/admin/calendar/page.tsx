@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -25,11 +25,15 @@ const HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "1
 
 export default function AdminCalendarPage() {
   const supabase = createClient();
+  const [businessId, setBusinessId] = useState<string | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  
+const [selectedDate, setSelectedDate] = useState(() => {
+  return new Date().toISOString().substring(0, 10);
+});
   const [filterEmployee, setFilterEmployee] = useState<string>("all");
   
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
@@ -44,29 +48,51 @@ export default function AdminCalendarPage() {
     start_time: "10:00",
   });
 
+  // 1. Récupérer le business_id de l'admin connecté au chargement
   useEffect(() => {
     setSelectedDate(new Date().toISOString().split("T")[0]);
-    fetchMetaData();
+    initBusinessAndData();
   }, []);
 
+  // 2. Recharger les réservations si la date change
   useEffect(() => {
-    if (selectedDate) {
-      fetchBookings();
+    if (selectedDate && businessId) {
+      fetchBookings(businessId);
     }
-  }, [selectedDate]);
+  }, [selectedDate, businessId]);
 
-  async function fetchMetaData() {
-    const { data: empData } = await supabase.from("employees").select("*");
-    if (empData) setEmployees(empData);
+  async function initBusinessAndData() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-    const { data: sData } = await supabase.from("services").select("*");
-    if (sData) setServices(sData);
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("business_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.business_id) return;
+
+    const bizId = profile.business_id;
+    setBusinessId(bizId);
+
+    // Charger les employés et services spécifiques à ce salon
+    const [empRes, sRes] = await Promise.all([
+      supabase.from("employees").select("*").eq("business_id", bizId),
+      supabase.from("services").select("*").eq("business_id", bizId),
+    ]);
+
+    if (empRes.data) setEmployees(empRes.data);
+    if (sRes.data) setServices(sRes.data);
+
+    fetchBookings(bizId);
   }
 
-  async function fetchBookings() {
+  async function fetchBookings(bizId: string) {
     const { data, error } = await supabase
       .from("bookings")
       .select("*, services(name, duration_minutes, price), employees(name, color)")
+      .eq("business_id", bizId)
       .eq("booking_date", selectedDate);
 
     if (error) {
@@ -75,8 +101,7 @@ export default function AdminCalendarPage() {
       const fetchedBookings = data as Booking[];
       setBookings(fetchedBookings);
 
-      // Synchronisation automatique : Si l'heure de fin est dépassée, 
-      // mettre à jour le statut dans la base de données Supabase à "done"
+      // Synchronisation automatique des statuts "done" si l'heure de fin est dépassée
       const now = new Date();
       let hasUpdates = false;
 
@@ -86,11 +111,11 @@ export default function AdminCalendarPage() {
           const endDateTime = new Date(`${booking.booking_date}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`);
 
           if (now > endDateTime) {
-            // Mise à jour effective en base de données
             const { error: updateErr } = await supabase
               .from("bookings")
               .update({ status: "done" })
-              .eq("id", booking.id);
+              .eq("id", booking.id)
+              .eq("business_id", bizId);
 
             if (!updateErr) {
               hasUpdates = true;
@@ -99,11 +124,11 @@ export default function AdminCalendarPage() {
         }
       }
 
-      // Recharger les réservations si des mises à jour ont eu lieu pour refléter le nouveau statut "done"
       if (hasUpdates) {
         const { data: refreshedData } = await supabase
           .from("bookings")
           .select("*, services(name, duration_minutes, price), employees(name, color)")
+          .eq("business_id", bizId)
           .eq("booking_date", selectedDate);
 
         if (refreshedData) {
@@ -135,6 +160,8 @@ export default function AdminCalendarPage() {
 
   async function handleCreateWalkIn(e: React.FormEvent) {
     e.preventDefault();
+    if (!businessId) return;
+
     const service = services.find(s => s.id === newWalkIn.service_id);
     const duration = service ? service.duration_minutes : 30;
 
@@ -146,6 +173,7 @@ export default function AdminCalendarPage() {
     const formattedEndTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
     const { error } = await supabase.from("bookings").insert([{
+      business_id: businessId, // 🔒 Isolation garantie
       client_name: newWalkIn.client_name,
       client_whatsapp: newWalkIn.client_whatsapp || "N/A",
       service_id: newWalkIn.service_id,
@@ -162,14 +190,15 @@ export default function AdminCalendarPage() {
     } else {
       setIsWalkInModalOpen(false);
       setNewWalkIn({ client_name: "", client_whatsapp: "", service_id: "", employee_id: "", start_time: "10:00" });
-      fetchBookings();
+      fetchBookings(businessId);
     }
   }
 
   async function updateStatusToCanceled(id: string) {
-    await supabase.from("bookings").update({ status: "canceled" }).eq("id", id);
+    if (!businessId) return;
+    await supabase.from("bookings").update({ status: "canceled" }).eq("id", id).eq("business_id", businessId);
     setIsDetailModalOpen(false);
-    fetchBookings();
+    fetchBookings(businessId);
   }
 
   const displayedEmployees = filterEmployee === "all" 
@@ -207,7 +236,7 @@ export default function AdminCalendarPage() {
 
           <button
             onClick={() => setIsWalkInModalOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-sm flex items-center gap-2 transition"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-sm flex items-center gap-2 transition cursor-pointer"
           >
             <Plus size={16} /> Ajouter Walk-in
           </button>
@@ -220,7 +249,7 @@ export default function AdminCalendarPage() {
           <div className="grid border-b border-slate-100 bg-slate-50/70" style={{ gridTemplateColumns: `80px repeat(${displayedEmployees.length || 1}, minmax(0, 1fr))` }}>
             <div className="p-3 text-center text-[10px] font-black text-slate-400 uppercase border-r border-slate-100">Heure</div>
             {displayedEmployees.length === 0 ? (
-              <div className="p-3 text-center text-xs text-slate-400">Aucun employé disponible</div>
+              <div className="p-3 text-center text-xs text-slate-400">Aucun employé disponible. Créez-en un !</div>
             ) : (
               displayedEmployees.map(emp => (
                 <div key={emp.id} className="p-3 text-center border-r border-slate-100 flex items-center justify-center gap-2">
@@ -371,7 +400,7 @@ export default function AdminCalendarPage() {
                 </div>
               </div>
 
-              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md transition mt-2">
+              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md transition mt-2 cursor-pointer">
                 Enregistrer la réservation
               </button>
             </form>
@@ -401,7 +430,7 @@ export default function AdminCalendarPage() {
             {selectedBooking.status !== "canceled" && (
               <button
                 onClick={() => updateStatusToCanceled(selectedBooking.id)}
-                className="w-full py-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs transition border border-rose-200"
+                className="w-full py-3 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs transition border border-rose-200 cursor-pointer"
               >
                 Marquer comme Annulé (Canceled)
               </button>

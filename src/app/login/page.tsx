@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Lock, Mail, ArrowRight, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner'; // Import de Sonner
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -26,8 +27,11 @@ export default function LoginPage() {
 
     if (error) {
       setErrorMsg(error.message);
+      toast.error(error.message); // Notification toast d'erreur
       setLoading(false);
     } else {
+      toast.success("Connexion réussie ! Redirection...");
+      router.refresh(); // Actualise le cache du routeur pour le middleware
       router.push('/admin/calendar');
     }
   };
@@ -81,7 +85,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
           >
             {loading ? 'Connexion...' : 'Se connecter'} <ArrowRight size={14} />
           </button>
@@ -89,7 +93,7 @@ export default function LoginPage() {
 
         <p className="text-center text-xs text-slate-500">
           Vous n'avez pas de compte ?{' '}
-          <Link href="/auth/register" className="text-indigo-600 font-semibold hover:underline">
+          <Link href="/signup" className="text-indigo-600 font-semibold hover:underline">
             Créer un salon
           </Link>
         </p>

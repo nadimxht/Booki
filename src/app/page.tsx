@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import image1 from './images/mobile.jpg';
 import { 
   Calendar, 
   ShoppingCart, 
@@ -11,28 +10,17 @@ import {
   ArrowRight, 
   Check,
   Star,
-  Quote,
   MapPin,
   ChevronDown,
-  HelpCircle,
-  Building2,
-  TrendingUp,
-  Zap,
-  BarChart3,
-  Clock,
-  UserCheck,
-  ShieldCheck,
-  Smartphone,
-  Scissors,
   Users,
   Store,
   Menu,
   X,
-  CreditCard,
   Sparkles,
-  ExternalLink,
-  ChevronRight,
-  Image
+  BarChart3,
+  TrendingUp,
+  ShieldCheck,
+  Clock
 } from 'lucide-react';
 
 export default function BookiLandingPage() {
@@ -123,7 +111,6 @@ export default function BookiLandingPage() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-10">
             <Link href="/" className="flex items-center gap-2 group">
-              
               <span className="font-extrabold text-xl tracking-tight text-slate-900">
                 Booki<span className="text-indigo-600">.tn</span>
               </span>
@@ -171,8 +158,8 @@ export default function BookiLandingPage() {
             <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-slate-700">Tarification</a>
             <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="block py-1 text-slate-700">FAQ</a>
             <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
-              <Link href="/auth/login" className="w-full text-center py-2 text-slate-800 bg-slate-100 rounded">Connexion</Link>
-              <Link href="/auth/register" className="w-full text-center py-2 text-white bg-slate-900 rounded font-medium">Créer un compte</Link>
+              <Link href="/login" className="w-full text-center py-2 text-slate-800 bg-slate-100 rounded">Connexion</Link>
+              <Link href="/signup" className="w-full text-center py-2 text-white bg-slate-900 rounded font-medium">Créer un compte</Link>
             </div>
           </div>
         )}
@@ -198,7 +185,7 @@ export default function BookiLandingPage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 text-xs font-semibold pt-2">
             <Link 
-              href="/auth/register" 
+              href="/signup" 
               className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-white px-7 py-3.5 rounded transition text-sm font-medium flex items-center justify-center gap-2 shadow-xs"
             >
               Commencer l'essai gratuit (14 jours)
@@ -230,13 +217,172 @@ export default function BookiLandingPage() {
         </div>
       </section>
 
-   {/* Interactive App Preview Section */}
-<section id="demo" className="py-16 px-6 max-w-7xl mx-auto">
-  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden p-6 sm:p-10 space-y-8">
-    
-    
-  </div>
-</section>
+      {/* Interactive App Preview Section (Fresha Style) */}
+      <section id="demo" className="py-16 px-6 max-w-7xl mx-auto">
+        <div className="text-center space-y-2 max-w-2xl mx-auto mb-10">
+         
+
+          {/* Interactive Navigation Tabs */}
+         {/* Interactive App Preview Section (Fresha Style) */}
+      <section id="demo" className="py-16 px-6 max-w-7xl mx-auto">
+        <div className="text-center space-y-2 max-w-2xl mx-auto mb-10">
+          <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Interface Logiciel</span>
+          <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
+            Découvrez Booki en action
+          </h2>
+          <p className="text-sm text-slate-600">
+            Explorez les écrans et fonctionnalités conçus pour piloter votre salon d'une main de maître.
+          </p>
+
+          {/* Interactive Navigation Tabs */}
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-4">
+            <button
+              onClick={() => setActiveDemoTab('calendar')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeDemoTab === 'calendar' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <Calendar size={14} /> Planning Agenda
+            </button>
+            <button
+              onClick={() => setActiveDemoTab('dashboard')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeDemoTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <BarChart3 size={14} /> Dashboard Financier
+            </button>
+            <button
+              onClick={() => setActiveDemoTab('pos')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeDemoTab === 'pos' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <ShoppingCart size={14} /> Caisse & Boutique
+            </button>
+            <button
+              onClick={() => setActiveDemoTab('whatsapp')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeDemoTab === 'whatsapp' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <MessageSquare size={14} /> WhatsApp & Marketing
+            </button>
+          </div>
+        </div>
+
+        {/* Demo Content Showcase Box with Screenshot Simulation */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden max-w-5xl mx-auto transition-all">
+          
+          
+
+          {/* Tab Content with Visual Mockups */}
+          <div className="p-6 sm:p-10">
+            {activeDemoTab === 'calendar' && (
+              <div className="space-y-6 animate-fadeIn">
+                
+
+                {/* Screenshot Visual Container */}
+                <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50">
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent z-10 flex items-end p-6">
+                    <p className="text-xs text-white font-medium">Aperçu de l'agenda multi-collaborateurs avec gestion des statuts de rendez-vous.</p>
+                  </div>
+                  <img 
+                    src="https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=1200" 
+                    alt="Planning Agenda Booki" 
+                    className="w-full h-72 sm:h-96 object-cover opacity-90"
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeDemoTab === 'dashboard' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-base">Bilan Financier & Rentabilité Nette</h3>
+                    <p className="text-xs text-slate-500">Agrégation automatique des recettes, salaires, charges et stocks.</p>
+                  </div>
+                  <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold px-3 py-1 rounded-full">
+                    Mois en cours (TND)
+                  </span>
+                </div>
+
+                {/* Screenshot Visual Container */}
+                <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50">
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent z-10 flex items-end p-6">
+                    <p className="text-xs text-white font-medium">Tableau de bord financier pour un suivi précis du bénéfice net en temps réel.</p>
+                  </div>
+                  <img 
+                    src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=1200" 
+                    alt="Dashboard Financier Booki" 
+                    className="w-full h-72 sm:h-96 object-cover opacity-90"
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeDemoTab === 'pos' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-base">Caisse POS & Click & Collect</h3>
+                    <p className="text-xs text-slate-500">Vente de produits cosmétiques, édition de reçus et gestion des stocks.</p>
+                  </div>
+                  <span className="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1 rounded-full">
+                    Stock Intelligent
+                  </span>
+                </div>
+
+                {/* Screenshot Visual Container */}
+                <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50">
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent z-10 flex items-end p-6">
+                    <p className="text-xs text-white font-medium">Catalogue boutique et encaissement rapide avec déduction automatique des stocks.</p>
+                  </div>
+                  <img 
+                    src="https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&q=80&w=1200" 
+                    alt="Caisse POS Booki" 
+                    className="w-full h-72 sm:h-96 object-cover opacity-90"
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeDemoTab === 'whatsapp' && (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-base">Automatisation WhatsApp & Marketing</h3>
+                    <p className="text-xs text-slate-500">Rappels automatiques de rendez-vous et diffusion de codes promo.</p>
+                  </div>
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold px-3 py-1 rounded-full">
+                    50 Crédits Gratuits inclus
+                  </span>
+                </div>
+
+                {/* Screenshot Visual Container */}
+                <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50">
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent z-10 flex items-end p-6">
+                    <p className="text-xs text-white font-medium">Module de diffusion WhatsApp et gestion des modèles de messages automatisés.</p>
+                  </div>
+                  <img 
+                    src="https://images.unsplash.com/photo-1611746872915-64382b5c76da?auto=format&fit=crop&q=80&w=1200" 
+                    alt="WhatsApp Marketing Booki" 
+                    className="w-full h-72 sm:h-96 object-cover opacity-90"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+      </section>
+        </div>
+
+        {/* Demo Content Showcase Box */}
+      
+      </section>
+
       {/* Feature Grid (Fresha Style) */}
       <section id="features" className="py-16 px-6 max-w-7xl mx-auto space-y-12">
         <div className="text-center space-y-2 max-w-2xl mx-auto">
@@ -276,7 +422,7 @@ export default function BookiLandingPage() {
             </div>
             <h3 className="font-extrabold text-slate-900 text-sm">Online store</h3>
             <p className="text-slate-600 leading-relaxed">
-              Gestion et ventes des produits cosmethique avec édition de reçus.
+              Gestion et ventes des produits cosmétiques avec édition de reçus.
             </p>
           </div>
 
@@ -364,7 +510,7 @@ export default function BookiLandingPage() {
               Des forfaits adaptés à chaque étape
             </h2>
             <p className="text-sm text-slate-600">
-              Essai gratuit de 14 jours sans engament. Facturation transparente en Dinar Tunisien.
+              Essai gratuit de 14 jours sans engagement. Facturation transparente en Dinar Tunisien.
             </p>
 
             {/* Monthly / Annual Toggle */}
@@ -372,7 +518,7 @@ export default function BookiLandingPage() {
               <span className={billingCycle === 'monthly' ? 'text-slate-900' : 'text-slate-500'}>Paiement Mensuel</span>
               <button 
                 onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'annual' : 'monthly')}
-                className="w-12 h-6 bg-slate-900 rounded-full p-1 transition relative flex items-center"
+                className="w-12 h-6 bg-slate-900 rounded-full p-1 transition relative flex items-center cursor-pointer"
               >
                 <div className={`w-4 h-4 bg-white rounded-full transition-transform ${billingCycle === 'annual' ? 'translate-x-6' : 'translate-x-0'}`} />
               </button>
@@ -415,7 +561,7 @@ export default function BookiLandingPage() {
                 </ul>
               </div>
               <Link 
-                href="/auth/register" 
+                href="/signup" 
                 className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded transition text-center"
               >
                 Commencer l'essai
@@ -456,7 +602,7 @@ export default function BookiLandingPage() {
                 </ul>
               </div>
               <Link 
-                href="/auth/register" 
+                href="/signup" 
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded transition text-center shadow-xs"
               >
                 Activer la formule Pro
@@ -490,7 +636,7 @@ export default function BookiLandingPage() {
                 </ul>
               </div>
               <Link 
-                href="/auth/register" 
+                href="/signup" 
                 className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded transition text-center"
               >
                 Nous contacter
@@ -522,7 +668,7 @@ export default function BookiLandingPage() {
               >
                 <button
                   onClick={() => setOpenFaqIndex(isOpen ? null : index)}
-                  className="w-full text-left p-4 flex items-center justify-between gap-4 font-semibold text-slate-900 text-xs hover:bg-slate-50 transition"
+                  className="w-full text-left p-4 flex items-center justify-between gap-4 font-semibold text-slate-900 text-xs hover:bg-slate-50 transition cursor-pointer"
                 >
                   <span>{faq.question}</span>
                   <ChevronDown 
@@ -545,7 +691,6 @@ export default function BookiLandingPage() {
       <footer className="bg-slate-900 text-slate-400 py-12 px-6 border-t border-slate-800 text-xs">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
-           
             <span className="font-bold text-slate-200">
               Booki.tn
             </span>

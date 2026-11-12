@@ -9,6 +9,7 @@ import {
 
 interface InventoryItem {
   id: string;
+  business_id: string;
   name: string;
   quantity: number;
   unit: string;
@@ -24,6 +25,7 @@ interface ServiceRequirement {
 
 interface Service {
   id: string;
+  business_id: string;
   name: string;
   category: string;
   description: string;
@@ -34,6 +36,7 @@ interface Service {
 
 export default function AdminServicesAndInventoryPage() {
   const supabase = createClient();
+  const [businessId, setBusinessId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"services" | "inventory">("services");
   
   const [services, setServices] = useState<Service[]>([]);
@@ -72,14 +75,38 @@ export default function AdminServicesAndInventoryPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    initBusinessAndData();
   }, []);
 
-  async function fetchData() {
+  async function initBusinessAndData() {
     setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    // 1. Récupérer le business_id de l'admin connecté
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("business_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.business_id) {
+      setLoading(false);
+      return;
+    }
+
+    const bizId = profile.business_id;
+    setBusinessId(bizId);
+    fetchData(bizId);
+  }
+
+  async function fetchData(bizId: string) {
     const [srvRes, invRes] = await Promise.all([
-      supabase.from("services").select("*").order("name"),
-      supabase.from("inventory").select("*").order("name")
+      supabase.from("services").select("*").eq("business_id", bizId).order("name"),
+      supabase.from("inventory").select("*").eq("business_id", bizId).order("name")
     ]);
 
     if (srvRes.data) setServices(srvRes.data);
@@ -107,7 +134,6 @@ export default function AdminServicesAndInventoryPage() {
     setSDuration(srv.duration_minutes.toString());
     setSPrice(srv.price.toString());
     
-    // Gérer proprement le format JSON ou tableau des requirements
     let reqs = srv.inventory_requirements;
     if (typeof reqs === "string") {
       try { reqs = JSON.parse(reqs); } catch (e) { reqs = []; }
@@ -118,21 +144,23 @@ export default function AdminServicesAndInventoryPage() {
 
   async function handleSaveService(e: React.FormEvent) {
     e.preventDefault();
+    if (!businessId) return;
     setSaving(true);
 
     const payload = {
+      business_id: businessId, // 🔒 Isolation garantie
       name: sName,
       category: sCategory,
       description: sDescription,
       duration_minutes: parseInt(sDuration) || 30,
       price: parseFloat(sPrice) || 0,
       image_url: null,
-      inventory_requirements: sRequirements // Enregistré directement en JSONB
+      inventory_requirements: sRequirements
     };
 
     let error;
     if (editingServiceId) {
-      const res = await supabase.from("services").update(payload).eq("id", editingServiceId);
+      const res = await supabase.from("services").update(payload).eq("id", editingServiceId).eq("business_id", businessId);
       error = res.error;
     } else {
       const res = await supabase.from("services").insert([payload]);
@@ -144,14 +172,15 @@ export default function AdminServicesAndInventoryPage() {
       alert("Erreur lors de l'enregistrement : " + error.message);
     } else {
       setIsServiceModalOpen(false);
-      fetchData();
+      fetchData(businessId);
     }
   }
 
   async function handleDeleteService(id: string) {
+    if (!businessId) return;
     if (!confirm("Voulez-vous vraiment supprimer ce service ?")) return;
-    await supabase.from("services").delete().eq("id", id);
-    fetchData();
+    await supabase.from("services").delete().eq("id", id).eq("business_id", businessId);
+    fetchData(businessId);
   }
 
   // --- INVENTORY ACTIONS ---
@@ -179,9 +208,11 @@ export default function AdminServicesAndInventoryPage() {
 
   async function handleSaveInventory(e: React.FormEvent) {
     e.preventDefault();
+    if (!businessId) return;
     setSaving(true);
 
     const payload = {
+      business_id: businessId, // 🔒 Isolation garantie
       name: iName,
       quantity: parseFloat(iQuantity) || 0,
       unit: iUnit,
@@ -192,7 +223,7 @@ export default function AdminServicesAndInventoryPage() {
 
     let error;
     if (editingInventoryId) {
-      const res = await supabase.from("inventory").update(payload).eq("id", editingInventoryId);
+      const res = await supabase.from("inventory").update(payload).eq("id", editingInventoryId).eq("business_id", businessId);
       error = res.error;
     } else {
       const res = await supabase.from("inventory").insert([payload]);
@@ -204,14 +235,15 @@ export default function AdminServicesAndInventoryPage() {
       alert("Erreur : " + error.message);
     } else {
       setIsInventoryModalOpen(false);
-      fetchData();
+      fetchData(businessId);
     }
   }
 
   async function handleDeleteInventory(id: string) {
+    if (!businessId) return;
     if (!confirm("Supprimer ce produit de l'inventaire ?")) return;
-    await supabase.from("inventory").delete().eq("id", id);
-    fetchData();
+    await supabase.from("inventory").delete().eq("id", id).eq("business_id", businessId);
+    fetchData(businessId);
   }
 
   // --- RESTOCK ACTIONS ---
@@ -222,29 +254,50 @@ export default function AdminServicesAndInventoryPage() {
     setIsRestockModalOpen(true);
   };
 
-  async function handleConfirmRestock(e: React.FormEvent) {
+ async function handleConfirmRestock(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedItemToRestock) return;
+    if (!selectedItemToRestock || !businessId) return;
 
     const addedQty = parseFloat(restockQty) || 0;
+    const unitCost = restockCost ? parseFloat(restockCost) : Number(selectedItemToRestock.price);
+    const totalCost = addedQty * unitCost;
     const newTotalQty = Number(selectedItemToRestock.quantity) + addedQty;
-    const newPrice = restockCost ? parseFloat(restockCost) : selectedItemToRestock.price;
 
     setSaving(true);
-    const { error } = await supabase
-      .from("inventory")
-      .update({ quantity: newTotalQty, price: newPrice })
-      .eq("id", selectedItemToRestock.id);
 
-    setSaving(false);
-    if (error) {
-      alert("Erreur lors du restockage : " + error.message);
-    } else {
+    try {
+      // 1. Mettre à jour la quantité et le prix unitaire dans la table inventory
+      const { error: invError } = await supabase
+        .from("inventory")
+        .update({ quantity: newTotalQty, price: unitCost })
+        .eq("id", selectedItemToRestock.id)
+        .eq("business_id", businessId);
+
+      if (invError) throw invError;
+
+      // 2. Enregistrer l'achat dans l'historique des restockages (pour la page dépenses)
+      const { error: restockError } = await supabase
+        .from("inventory_restocks")
+        .insert([{
+          business_id: businessId,
+          inventory_id: selectedItemToRestock.id,
+          item_name: selectedItemToRestock.name,
+          quantity_added: addedQty,
+          unit_cost: unitCost,
+          total_cost: totalCost,
+          restock_date: new Date().toISOString().split('T')[0]
+        }]);
+
+      if (restockError) throw restockError;
+
       setIsRestockModalOpen(false);
-      fetchData();
+      fetchData(businessId);
+    } catch (err: any) {
+      alert("Erreur lors du restockage : " + err.message);
+    } finally {
+      setSaving(false);
     }
   }
-
   const totalStockExpenses = inventory.reduce((acc, curr) => acc + (Number(curr.quantity) * Number(curr.price)), 0);
 
   if (loading) {
@@ -266,7 +319,7 @@ export default function AdminServicesAndInventoryPage() {
         <div className="flex bg-slate-200/70 p-1 rounded-2xl w-fit">
           <button
             onClick={() => setActiveTab("services")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
               activeTab === "services" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -274,7 +327,7 @@ export default function AdminServicesAndInventoryPage() {
           </button>
           <button
             onClick={() => setActiveTab("inventory")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
               activeTab === "inventory" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -290,7 +343,7 @@ export default function AdminServicesAndInventoryPage() {
             <h2 className="font-bold text-sm text-slate-900">Liste des Prestations</h2>
             <button
               onClick={openServiceModalForCreate}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer"
             >
               <Plus size={16} /> Ajouter un service
             </button>
@@ -340,10 +393,10 @@ export default function AdminServicesAndInventoryPage() {
                   </span>
 
                   <div className="flex items-center gap-1">
-                    <button onClick={() => openServiceModalForEdit(srv)} className="p-2 hover:bg-white rounded-xl text-slate-500 transition shadow-2xs" title="Modifier">
+                    <button onClick={() => openServiceModalForEdit(srv)} className="p-2 hover:bg-white rounded-xl text-slate-500 transition shadow-2xs cursor-pointer" title="Modifier">
                       <Edit size={14} />
                     </button>
-                    <button onClick={() => handleDeleteService(srv.id)} className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition" title="Supprimer">
+                    <button onClick={() => handleDeleteService(srv.id)} className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition cursor-pointer" title="Supprimer">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -357,19 +410,19 @@ export default function AdminServicesAndInventoryPage() {
       {/* --- ONGLET INVENTAIRE --- */}
       {activeTab === "inventory" && (
         <div className="space-y-6">
-          <div className=" rounded-3xl p-6 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="space-y-1">
-              <span className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider flex items-center gap-1">
+              <span className="text-[10px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
                 <TrendingDown size={14} /> Valeur Totale / Dépenses en Stock
               </span>
-              <h2 className="text-3xl font-black text-black">{totalStockExpenses.toFixed(2)} TND</h2>
-              <p className="text-xs text-slate-300">
+              <h2 className="text-3xl font-black text-white">{totalStockExpenses.toFixed(2)} TND</h2>
+              <p className="text-xs text-slate-400">
                 Basé sur {inventory.length} produit(s) enregistré(s).
               </p>
             </div>
             <button
               onClick={openInventoryModalForCreate}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition"
+              className="bg-indigo-600 hover:bg-indigo-750 text-white px-5 py-3 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer"
             >
               <Plus size={16} /> Nouveau Produit
             </button>
@@ -419,15 +472,15 @@ export default function AdminServicesAndInventoryPage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => openRestockModal(item)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
                           title="Restocker"
                         >
                           <RefreshCw size={14} /> Restocker
                         </button>
-                        <button onClick={() => openInventoryModalForEdit(item)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition" title="Modifier">
+                        <button onClick={() => openInventoryModalForEdit(item)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition cursor-pointer" title="Modifier">
                           <Edit size={16} />
                         </button>
-                        <button onClick={() => handleDeleteInventory(item.id)} className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition" title="Supprimer">
+                        <button onClick={() => handleDeleteInventory(item.id)} className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition cursor-pointer" title="Supprimer">
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -446,7 +499,7 @@ export default function AdminServicesAndInventoryPage() {
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <h2 className="font-bold text-base text-slate-900">Restocker : {selectedItemToRestock.name}</h2>
-              <button onClick={() => setIsRestockModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500"><X size={18} /></button>
+              <button onClick={() => setIsRestockModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 cursor-pointer"><X size={18} /></button>
             </div>
 
             <form onSubmit={handleConfirmRestock} className="space-y-4">
@@ -465,8 +518,8 @@ export default function AdminServicesAndInventoryPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setIsRestockModalOpen(false)} className="bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold">Annuler</button>
-                <button type="submit" disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm">Confirmer</button>
+                <button type="button" onClick={() => setIsRestockModalOpen(false)} className="bg-slate-100 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer">Annuler</button>
+                <button type="submit" disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm cursor-pointer">Confirmer</button>
               </div>
             </form>
           </div>
@@ -479,7 +532,7 @@ export default function AdminServicesAndInventoryPage() {
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-xl space-y-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <h2 className="font-bold text-base text-slate-900">{editingServiceId ? "Modifier le service" : "Ajouter un service"}</h2>
-              <button onClick={() => setIsServiceModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500"><X size={18} /></button>
+              <button onClick={() => setIsServiceModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 cursor-pointer"><X size={18} /></button>
             </div>
 
             <form onSubmit={handleSaveService} className="space-y-4">
@@ -518,7 +571,7 @@ export default function AdminServicesAndInventoryPage() {
                   <button
                     type="button"
                     onClick={() => setSRequirements([...sRequirements, { item_id: inventory[0]?.id || "", amount: 1 }])}
-                    className="bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg text-[10px] font-bold hover:bg-indigo-200 transition"
+                    className="bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg text-[10px] font-bold hover:bg-indigo-200 transition cursor-pointer"
                   >
                     + Associer un produit
                   </button>
@@ -556,7 +609,7 @@ export default function AdminServicesAndInventoryPage() {
                     <button
                       type="button"
                       onClick={() => setSRequirements(sRequirements.filter((_, i) => i !== index))}
-                      className="text-rose-500 hover:bg-rose-50 p-2 rounded-xl"
+                      className="text-rose-500 hover:bg-rose-50 p-2 rounded-xl cursor-pointer"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -565,8 +618,8 @@ export default function AdminServicesAndInventoryPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setIsServiceModalOpen(false)} className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-xl text-xs font-bold">Annuler</button>
-                <button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm">{saving ? "Enregistrement..." : "Enregistrer"}</button>
+                <button type="button" onClick={() => setIsServiceModalOpen(false)} className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-xl text-xs font-bold cursor-pointer">Annuler</button>
+                <button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm cursor-pointer">{saving ? "Enregistrement..." : "Enregistrer"}</button>
               </div>
             </form>
           </div>
@@ -579,7 +632,7 @@ export default function AdminServicesAndInventoryPage() {
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl space-y-6">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <h2 className="font-bold text-base text-slate-900">{editingInventoryId ? "Modifier le produit" : "Ajouter un produit"}</h2>
-              <button onClick={() => setIsInventoryModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500"><X size={18} /></button>
+              <button onClick={() => setIsInventoryModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 cursor-pointer"><X size={18} /></button>
             </div>
 
             <form onSubmit={handleSaveInventory} className="space-y-4">
@@ -616,8 +669,8 @@ export default function AdminServicesAndInventoryPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setIsInventoryModalOpen(false)} className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-xl text-xs font-bold">Annuler</button>
-                <button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm">Enregistrer</button>
+                <button type="button" onClick={() => setIsInventoryModalOpen(false)} className="bg-slate-100 text-slate-700 px-5 py-2.5 rounded-xl text-xs font-bold cursor-pointer">Annuler</button>
+                <button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm cursor-pointer">Enregistrer</button>
               </div>
             </form>
           </div>

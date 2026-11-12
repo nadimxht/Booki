@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Building2, Mail, Lock, Phone, ArrowRight, AlertCircle } from 'lucide-react';
+import PhoneInputCustom from "../components/Phone-input";
+import { toast } from 'sonner'; // Import de Sonner
 
 export default function RegisterPage() {
   const [salonName, setSalonName] = useState('');
@@ -21,34 +23,36 @@ export default function RegisterPage() {
     setLoading(true);
     setErrorMsg('');
 
-    const slug = salonName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-
+    // 1. Inscription Auth
     const { data: authData, error: authErr } = await supabase.auth.signUp({
       email,
       password,
     });
 
     if (authErr || !authData.user) {
-      setErrorMsg(authErr?.message || 'Erreur lors de l’inscription');
+      const message = authErr?.message || 'Erreur lors de l’inscription';
+      setErrorMsg(message);
+      toast.error(message);
       setLoading(false);
       return;
     }
 
-    const { error: bizErr } = await supabase.from('businesses').insert({
-      owner_id: authData.user.id,
-      name: salonName,
-      slug: `${slug}-${Math.floor(1000 + Math.random() * 9000)}`,
-      phone,
+    // 2. Appel de la fonction RPC sécurisée pour créer le salon et le profil
+    const { data: businessId, error: rpcErr } = await supabase.rpc('create_new_salon', {
+      p_salon_name: salonName,
+      p_phone: phone,
     });
 
-    if (bizErr) {
-      setErrorMsg(bizErr.message);
+    if (rpcErr) {
+      toast.error("Erreur lors de la création du salon : " + rpcErr.message);
       setLoading(false);
-    } else {
-      router.push('/admin/calendar');
+      return;
     }
-  };
 
+    toast.success("Salon créé avec succès ! Bienvenue sur Booki.");
+    router.refresh();
+    router.push('/admin/calendar');
+  };
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-slate-800">
       <div className="w-full max-w-md bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-6">
@@ -85,13 +89,10 @@ export default function RegisterPage() {
             <label className="font-semibold text-slate-700">Téléphone WhatsApp *</label>
             <div className="relative">
               <Phone size={16} className="absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                required
-                placeholder="+216 98 000 000"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-600"
+              <PhoneInputCustom 
+                value={phone} 
+                onChange={setPhone} 
+                required 
               />
             </div>
           </div>
@@ -103,7 +104,7 @@ export default function RegisterPage() {
               <input
                 type="email"
                 required
-                placeholder="contact@vobresalon.tn"
+                placeholder="contact@votresalon.tn"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-600"
@@ -128,7 +129,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
           >
             {loading ? 'Création...' : 'Démarrer 14 jours gratuits'} <ArrowRight size={14} />
           </button>
@@ -136,7 +137,7 @@ export default function RegisterPage() {
 
         <p className="text-center text-xs text-slate-500">
           Déjà un compte ?{' '}
-          <Link href="/auth/login" className="text-indigo-600 font-semibold hover:underline">
+          <Link href="/login" className="text-indigo-600 font-semibold hover:underline">
             Se connecter
           </Link>
         </p>

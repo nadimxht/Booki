@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from 'sonner';
 import { Users, Plus, Trash2, Edit, DollarSign, Phone, Mail, X, Check, Palette, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 
 interface Employee {
   id: string;
+  business_id: string;
   name: string;
   role: string;
   salary: number;
@@ -29,6 +31,7 @@ const COLOR_PRESETS = [
 
 export default function AdminTeamPage() {
   const supabase = createClient();
+  const [businessId, setBusinessId] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState("");
@@ -50,14 +53,39 @@ export default function AdminTeamPage() {
     // Format YYYY-MM pour le mois en cours
     const monthStr = new Date().toISOString().substring(0, 7);
     setCurrentMonth(monthStr);
-    fetchEmployees();
+    initBusinessAndData();
   }, []);
 
-  async function fetchEmployees() {
+  async function initBusinessAndData() {
     setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    // 1. Récupérer le business_id de l'admin connecté
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("business_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.business_id) {
+      setLoading(false);
+      return;
+    }
+
+    const bizId = profile.business_id;
+    setBusinessId(bizId);
+    fetchEmployees(bizId);
+  }
+
+  async function fetchEmployees(bizId: string) {
     const { data } = await supabase
       .from("employees")
       .select("*")
+      .eq("business_id", bizId)
       .order("name", { ascending: true });
 
     if (data) {
@@ -68,6 +96,7 @@ export default function AdminTeamPage() {
 
   // Basculer le statut de paiement du salaire
   async function toggleSalaryStatus(emp: Employee) {
+    if (!businessId) return;
     const newPaidStatus = !(emp.last_paid_month === currentMonth && emp.is_paid_this_month);
 
     const { error } = await supabase
@@ -76,12 +105,13 @@ export default function AdminTeamPage() {
         is_paid_this_month: newPaidStatus,
         last_paid_month: newPaidStatus ? currentMonth : null
       })
-      .eq("id", emp.id);
+      .eq("id", emp.id)
+      .eq("business_id", businessId);
 
     if (error) {
       alert("Erreur lors de la mise à jour du statut : " + error.message);
     } else {
-      fetchEmployees();
+      fetchEmployees(businessId);
     }
   }
 
@@ -107,45 +137,63 @@ export default function AdminTeamPage() {
     setIsModalOpen(true);
   };
 
-  async function handleSave(e: React.FormEvent) {
+ async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    
+    if (!businessId) {
+      toast.error("Erreur : ID de l'entreprise non chargé. Veuillez rafraîchir la page.");
+      return;
+    }
+
     setSaving(true);
 
     const payload = {
+      business_id: businessId, 
       name,
       role,
       salary: salary ? parseFloat(salary) : 0,
       color,
-      email,
-      phone,
+      email: email.trim() || null, // Évite d'envoyer une chaîne vide
+      phone: phone.trim() || null, // Évite d'envoyer une chaîne vide
     };
 
     let error;
     if (editingId) {
-      const res = await supabase.from("employees").update(payload).eq("id", editingId);
+      const res = await supabase
+        .from("employees")
+        .update(payload)
+        .eq("id", editingId)
+        .eq("business_id", businessId);
       error = res.error;
     } else {
-      const res = await supabase.from("employees").insert([payload]);
+      const res = await supabase
+        .from("employees")
+        .insert([payload])
+        .select();
       error = res.error;
     }
 
     setSaving(false);
+
     if (error) {
-      alert("Erreur lors de l'enregistrement : " + error.message);
+      console.error("Erreur Supabase détaillée:", error);
+      toast.error("Erreur lors de l'enregistrement : " + error.message);
     } else {
+      toast.success(editingId ? "Membre modifié avec succès !" : "Membre ajouté avec succès !");
       setIsModalOpen(false);
-      fetchEmployees();
+      fetchEmployees(businessId);
     }
   }
 
   async function handleDelete(id: string) {
+    if (!businessId) return;
     if (!confirm("Voulez-vous vraiment supprimer ce membre de l'équipe ?")) return;
 
-    const { error } = await supabase.from("employees").delete().eq("id", id);
+    const { error } = await supabase.from("employees").delete().eq("id", id).eq("business_id", businessId);
     if (error) {
       alert("Erreur lors de la suppression : " + error.message);
     } else {
-      fetchEmployees();
+      fetchEmployees(businessId);
     }
   }
 
@@ -176,17 +224,17 @@ export default function AdminTeamPage() {
         </div>
         <button
           onClick={openModalForCreate}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition self-start sm:self-auto"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition self-start sm:self-auto cursor-pointer"
         >
           <Plus size={16} /> Ajouter un membre
         </button>
       </div>
 
       {/* Carte Récapitulative des Salaires du Mois */}
-      <div className="rounded-3xl p-6 text-white shadow-lg grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-lg grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-1">
           <span className="text-[10px] font-extrabold text-indigo-300 uppercase tracking-wider">Masse Salariale Totale</span>
-          <h2 className="text-2xl font-black text-black">{totalSalaries.toFixed(2)} TND</h2>
+          <h2 className="text-2xl font-black text-white">{totalSalaries.toFixed(2)} TND</h2>
           <p className="text-[11px] text-slate-400">{employees.length} membre(s) au total</p>
         </div>
 
@@ -194,7 +242,7 @@ export default function AdminTeamPage() {
           <span className="text-[10px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
             <CheckCircle2 size={12} /> Salaires Versés (Ce mois)
           </span>
-          <h2 className="text-2xl font-black text-black">{totalPaidSalaries.toFixed(2)} TND</h2>
+          <h2 className="text-2xl font-black text-white">{totalPaidSalaries.toFixed(2)} TND</h2>
           <p className="text-[11px] text-slate-400">
             {employees.filter((emp) => emp.last_paid_month === currentMonth && emp.is_paid_this_month).length} / {employees.length} payé(s)
           </p>
@@ -204,7 +252,7 @@ export default function AdminTeamPage() {
           <span className="text-[10px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
             <Clock size={12} /> Reste à Verser
           </span>
-          <h2 className="text-2xl font-black text-emerald-500">{(totalSalaries - totalPaidSalaries).toFixed(2)} TND</h2>
+          <h2 className="text-2xl font-black text-emerald-400">{(totalSalaries - totalPaidSalaries).toFixed(2)} TND</h2>
           <p className="text-[11px] text-slate-400">En attente de paiement</p>
         </div>
       </div>
@@ -249,14 +297,14 @@ export default function AdminTeamPage() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => openModalForEdit(emp)}
-                      className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition"
+                      className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition cursor-pointer"
                       title="Modifier"
                     >
                       <Edit size={16} />
                     </button>
                     <button
                       onClick={() => handleDelete(emp.id)}
-                      className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition"
+                      className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition cursor-pointer"
                       title="Supprimer"
                     >
                       <Trash2 size={16} />
@@ -297,7 +345,7 @@ export default function AdminTeamPage() {
 
                   <button
                     onClick={() => toggleSalaryStatus(emp)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-xs ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
                       isPaid
                         ? "bg-slate-100 hover:bg-slate-200 text-slate-600"
                         : "bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -324,7 +372,7 @@ export default function AdminTeamPage() {
               </h2>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition"
+                className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 transition cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -402,7 +450,7 @@ export default function AdminTeamPage() {
                       type="button"
                       onClick={() => setColor(preset)}
                       style={{ backgroundColor: preset }}
-                      className={`w-8 h-8 rounded-full transition flex items-center justify-center text-white ${
+                      className={`w-8 h-8 rounded-full transition flex items-center justify-center text-white cursor-pointer ${
                         color === preset ? "ring-2 ring-offset-2 ring-slate-900 scale-110" : "opacity-80 hover:opacity-100"
                       }`}
                     >
@@ -423,14 +471,14 @@ export default function AdminTeamPage() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-xl text-xs font-bold transition"
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm transition disabled:opacity-50"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm transition disabled:opacity-50 cursor-pointer"
                 >
                   {saving ? "Enregistrement..." : "Enregistrer"}
                 </button>
