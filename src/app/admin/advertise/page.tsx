@@ -1,400 +1,760 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import {
-  Megaphone, MessageSquare, Sparkles, CheckCircle2, Send,
-  Key, Tag, Bell, ShoppingBag, Save, AlertCircle, Users, History, CheckCheck
+  MessageSquare,
+  CheckCircle2,
+  Send,
+  Sparkles,
+  ExternalLink,
+  Users,
+  Calendar,
+  Megaphone,
+  Copy,
+  RotateCcw,
+  Tag,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
-interface MessageTemplate {
-  type: "sales" | "promo" | "reminder";
-  title: string;
-  message_body: string;
-  promo_code?: string;
+interface ClientTarget {
+  id: string;
+  name: string;
+  phone: string;
+  service: string;
+  date: string;
+  time: string;
+}
+
+interface PromoCode {
+  id: string;
+  code: string;
+  discount_type: "percent" | "fixed";
+  discount_value: number;
+  min_purchase: number;
+  expires_at: string | null;
   is_active: boolean;
 }
 
-interface SentMessageLog {
-  id: string;
-  title: string;
-  type: string;
-  recipientsCount: number;
-  sentAt: string;
-  status: string;
-}
-
-const INITIAL_TEMPLATES: MessageTemplate[] = [
-  {
-    type: "reminder",
-    title: "Rappel de Rendez-vous (24h avant)",
-    message_body: "Bonjour {{client_name}}, rappel de votre rendez-vous demain à {{time}} chez {{salon_name}}. À très vite !",
-    is_active: true,
-  },
-  {
-    type: "promo",
-    title: "Offre Spéciale & Code Promo",
-    message_body: "Bonjour {{client_name}} ! Profitez de -20% sur votre prochaine prestation avec le code {{promo_code}} chez {{salon_name}}.",
-    promo_code: "BOOKI20",
-    is_active: false,
-  },
-  {
-    type: "sales",
-    title: "Nouveautés Boutique & Ventes",
-    message_body: "Bonjour {{client_name}}, nos nouveaux soins capillaires sont arrivés en boutique ! Réservez en Click & Collect sur notre portail.",
-    is_active: false,
-  },
-];
-
-export default function AdminAdvertisePage() {
-  const [activeTab, setActiveTab] = useState<"templates" | "history">("templates");
-  const [phoneNumberId, setPhoneNumberId] = useState("");
-  const [wabaId, setWabaId] = useState("");
-  const [accessToken, setAccessToken] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
-  const [freeCredits, setFreeCredits] = useState(50);
-  const [totalSent, setTotalSent] = useState(0);
-
-  const [templates, setTemplates] = useState<MessageTemplate[]>(INITIAL_TEMPLATES);
-  const [historyLogs, setHistoryLogs] = useState<SentMessageLog[]>([
-    {
-      id: "log-1",
-      title: "Rappel de Rendez-vous (24h avant)",
-      type: "reminder",
-      recipientsCount: 12,
-      sentAt: "10/11/2026 à 09:30",
-      status: "Livré"
-    }
-  ]);
-
+export default function WhatsAppAdminPage() {
+  const supabase = createClient();
+  const [businessId, setBusinessId] = useState<string | null>(null);
+  const [salonName, setSalonName] = useState("Notre Salon");
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [sendingType, setSendingType] = useState<string | null>(null);
 
-  const clientCount = 28;
+  // WhatsApp Config state
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [hoursBefore, setHoursBefore] = useState(24);
+  const [template, setTemplate] = useState(
+    "Bonjour {{client_name}} 👋, rappel de votre RDV chez {{salon_name}} demain à {{time}} ({{service}})."
+  );
 
-  const handleConnectWhatsApp = (e: React.FormEvent) => {
+  // Campagne wa.me state & Filters
+  const [allBookings, setAllBookings] = useState<ClientTarget[]>([]);
+  const [filterMode, setFilterMode] = useState<"today" | "tomorrow" | "upcoming">("tomorrow");
+  const [sentStatus, setSentStatus] = useState<Record<string, boolean>>({});
+  const [loadingBookings, setLoadingBookings] = useState(false);
+
+  // Sales & Advertising Broadcast state
+  const [promoTitle, setPromoTitle] = useState("🔥 Offre Spéciale Weekend !");
+  const [discount, setDiscount] = useState("-20% sur toutes les coupes");
+  const [validUntil, setValidUntil] = useState("ce dimanche");
+  const [promoCopied, setPromoCopied] = useState(false);
+
+  // Promo Codes Management state
+  const [promoList, setPromoList] = useState<PromoCode[]>([]);
+  const [newCode, setNewCode] = useState("");
+  const [newDiscountType, setNewDiscountType] = useState<"percent" | "fixed">("percent");
+  const [newDiscountValue, setNewDiscountValue] = useState("");
+  const [newMinPurchase, setNewMinPurchase] = useState("");
+  const [newExpiresAt, setNewExpiresAt] = useState("");
+  const [creatingPromo, setCreatingPromo] = useState(false);
+
+  useEffect(() => {
+    loadConfigAndData();
+  }, []);
+
+  async function loadConfigAndData() {
+    setLoading(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return setLoading(false);
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("business_id, businesses(name)")
+      .eq("id", user.id)
+      .single();
+
+    if (!profile?.business_id) return setLoading(false);
+    const bId = profile.business_id;
+    setBusinessId(bId);
+
+    if (profile.businesses && (profile.businesses as any).name) {
+      setSalonName((profile.businesses as any).name);
+    }
+
+    const { data: config } = await supabase
+      .from("whatsapp_configs")
+      .select("*")
+      .eq("business_id", bId)
+      .maybeSingle();
+
+    if (config) {
+      setPhoneNumber(config.phone_number || "");
+      setReminderEnabled(config.reminder_enabled ?? false);
+      setHoursBefore(config.reminder_hours_before || 24);
+      if (config.message_template) setTemplate(config.message_template);
+    }
+
+    await Promise.all([fetchBookingsForCampaign(bId), fetchPromoCodes(bId)]);
+    setLoading(false);
+  }
+
+  async function fetchBookingsForCampaign(bId: string) {
+    setLoadingBookings(true);
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+      now.getDate()
+    ).padStart(2, "0")}`;
+
+    const { data, error } = await supabase
+      .from("bookings")
+      .select(
+        `
+        id,
+        client_name,
+        client_whatsapp,
+        booking_date,
+        start_time,
+        services (name)
+      `
+      )
+      .eq("business_id", bId)
+      .gte("booking_date", today)
+      .order("booking_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .limit(50);
+
+    if (!error && data) {
+      const formatted = data.map((b: any) => ({
+        id: b.id,
+        name: b.client_name,
+        phone: b.client_whatsapp || "",
+        service: b.services?.name || "Prestation",
+        date: b.booking_date,
+        time: b.start_time?.slice(0, 5) || b.start_time,
+      }));
+      setAllBookings(formatted);
+    }
+    setLoadingBookings(false);
+  }
+
+  async function fetchPromoCodes(bId: string) {
+    const { data, error } = await supabase
+      .from("promo_codes")
+      .select("*")
+      .eq("business_id", bId)
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setPromoList(data);
+    }
+  }
+
+  const getLocalDateString = (offsetDays = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+  };
+
+  const todayStr = getLocalDateString(0);
+  const tomorrowStr = getLocalDateString(1);
+
+  const filteredBookings = allBookings.filter((client) => {
+    if (filterMode === "today") return client.date === todayStr;
+    if (filterMode === "tomorrow") return client.date === tomorrowStr;
+    return true;
+  });
+
+  function handleWaMeSend(client: ClientTarget) {
+    const cleanPhone = client.phone.replace(/[^0-9]/g, "");
+
+    const personalizedText = template
+      .replace(/\{\{client_name\}\}/g, client.name)
+      .replace(/\{\{salon_name\}\}/g, salonName)
+      .replace(/\{\{time\}\}/g, `${client.date} à ${client.time}`)
+      .replace(/\{\{service\}\}/g, client.service);
+
+    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(personalizedText)}`;
+
+    window.open(url, "_blank");
+    setSentStatus((prev) => ({ ...prev, [client.id]: true }));
+  }
+
+  function handleMarkAllAsSent() {
+    const newStatus = { ...sentStatus };
+    filteredBookings.forEach((client) => {
+      newStatus[client.id] = true;
+    });
+    setSentStatus(newStatus);
+  }
+
+  function handleResetStatus() {
+    const newStatus = { ...sentStatus };
+    filteredBookings.forEach((client) => {
+      delete newStatus[client.id];
+    });
+    setSentStatus(newStatus);
+  }
+
+  async function handleSaveConfig(e: React.FormEvent) {
     e.preventDefault();
-    if (!phoneNumberId.trim() || !accessToken.trim()) {
-      alert("Veuillez renseigner au moins le Phone ID et l'Access Token.");
-      return;
-    }
+    if (!businessId) return;
     setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      setIsConnected(true);
-      alert("Compte WhatsApp Business connecté avec succès ! (Mode Simulation)");
-    }, 600);
-  };
 
-  const handleSaveTemplates = () => {
-    setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      alert("Modèles d'automatisation enregistrés ! (Mode Simulation)");
-    }, 600);
-  };
+    const { error } = await supabase.from("whatsapp_configs").upsert(
+      {
+        business_id: businessId,
+        phone_number: phoneNumber,
+        provider: "wa.me",
+        reminder_enabled: reminderEnabled,
+        reminder_hours_before: hoursBefore,
+        message_template: template,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "business_id" }
+    );
 
-  const handleSendCampaign = (tpl: MessageTemplate) => {
-    if (!isConnected) {
-      alert("Veuillez d'abord connecter votre compte WhatsApp Business.");
-      return;
+    setSaving(false);
+    if (error) {
+      alert("Erreur de sauvegarde : " + error.message);
+    } else {
+      alert("Modèle enregistré avec succès !");
     }
-    if (freeCredits <= 0) {
-      alert("Vous n'avez plus de crédits messages gratuits disponibles.");
-      return;
+  }
+
+  async function handleCreatePromo(e: React.FormEvent) {
+    e.preventDefault();
+    if (!businessId || !newCode || !newDiscountValue) return;
+    setCreatingPromo(true);
+
+    const { error } = await supabase.from("promo_codes").insert([
+      {
+        business_id: businessId,
+        code: newCode.trim().toUpperCase(),
+        discount_type: newDiscountType,
+        discount_value: parseFloat(newDiscountValue),
+        min_purchase: newMinPurchase ? parseFloat(newMinPurchase) : 0,
+        expires_at: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
+        is_active: true,
+      },
+    ]);
+
+    setCreatingPromo(false);
+    if (error) {
+      alert("Erreur lors de la création du code : " + error.message);
+    } else {
+      setNewCode("");
+      setNewDiscountValue("");
+      setNewMinPurchase("");
+      setNewExpiresAt("");
+      fetchPromoCodes(businessId);
     }
+  }
 
-    const recipients = Math.min(clientCount, freeCredits);
-    if (!confirm(`[Simulation] Diffuser "${tpl.title}" à ${recipients} clients ?`)) return;
+  async function handleDeletePromo(id: string) {
+    if (!confirm("Voulez-vous vraiment supprimer ce code promo ?")) return;
+    const { error } = await supabase.from("promo_codes").delete().eq("id", id);
+    if (!error && businessId) {
+      fetchPromoCodes(businessId);
+    }
+  }
 
-    setSendingType(tpl.type);
-    setTimeout(() => {
-      setSendingType(null);
-      setFreeCredits((prev) => Math.max(0, prev - recipients));
-      setTotalSent((prev) => prev + recipients);
+  async function handleTogglePromo(promo: PromoCode) {
+    if (!businessId) return;
+    const { error } = await supabase
+      .from("promo_codes")
+      .update({ is_active: !promo.is_active })
+      .eq("id", promo.id);
 
-      // Ajouter à l'historique UI
-      const newLog: SentMessageLog = {
-        id: `log-${Date.now()}`,
-        title: tpl.title,
-        type: tpl.type,
-        recipientsCount: recipients,
-        sentAt: new Date().toLocaleDateString("fr-FR") + " à " + new Date().toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' }),
-        status: "Livré"
-      };
-      setHistoryLogs([newLog, ...historyLogs]);
+    if (!error) {
+      fetchPromoCodes(businessId);
+    }
+  }
 
-      alert(`Campagne diffusée avec succès à ${recipients} clients !`);
-    }, 1000);
-  };
+  const broadcastMessage = `✨ *${salonName}* ✨\n\n${promoTitle}\n\n💇‍♂️ Profitez de *${discount}* pour toute réservation effectuée ${validUntil}.\n\n📅 Réservez vite votre créneau directement ici ou contactez-nous par message !\n\nAu plaisir de vous recevoir ! 🌟`;
 
-  const updateTemplateField = (index: number, field: keyof MessageTemplate, value: any) => {
-    const updated = [...templates];
-    updated[index] = { ...updated[index], [field]: value };
-    setTemplates(updated);
-  };
+  function handleCopyBroadcast() {
+    navigator.clipboard.writeText(broadcastMessage);
+    setPromoCopied(true);
+    setTimeout(() => setPromoCopied(false), 3000);
+  }
 
-  const getTemplateIcon = (type: string) => {
-    if (type === "promo") return <Tag size={16} className="text-amber-600" />;
-    if (type === "sales") return <ShoppingBag size={16} className="text-indigo-600" />;
-    return <Bell size={16} className="text-emerald-600" />;
-  };
+  if (loading) {
+    return (
+      <div className="p-12 text-center text-xs text-slate-400 font-medium">
+        Chargement de l'espace WhatsApp & Marketing...
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-12">
-      {/* Header & Navigation Onglets */}
+    <div className="max-w-5xl mx-auto space-y-8 pb-12 font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-            <Megaphone className="text-indigo-600" size={24} /> Publicité & WhatsApp Business
+          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2.5">
+            <MessageSquare className="text-emerald-600" size={24} /> Gestion WhatsApp & Marketing
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Connectez votre API WhatsApp Business, gérez vos templates et suivez l'historique des envois.
+            Gérez vos rappels, diffusez vos offres et pilotez vos codes promo en un seul endroit.
           </p>
         </div>
 
-        <div className="flex bg-slate-200/70 p-1 rounded-2xl w-fit">
-          <button
-            onClick={() => setActiveTab("templates")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "templates" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <Megaphone size={14} /> Campagnes & Modèles
-          </button>
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "history" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <History size={14} /> Historique ({historyLogs.length})
-          </button>
+        <label className="flex items-center gap-3 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 cursor-pointer shadow-2xs">
+          <span className="text-xs font-bold text-slate-700">
+            {reminderEnabled ? "Rappels Actifs" : "Rappels Inactifs"}
+          </span>
+          <input
+            type="checkbox"
+            checked={reminderEnabled}
+            onChange={(e) => setReminderEnabled(e.target.checked)}
+            className="w-4 h-4 accent-emerald-600 cursor-pointer"
+          />
+        </label>
+      </div>
+
+      {/* SECTION 1 : Modèle WhatsApp */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <form
+          onSubmit={handleSaveConfig}
+          className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-2xs p-6 space-y-6"
+        >
+          <div className="space-y-4">
+            <h3 className="font-bold text-sm text-slate-900 border-b border-slate-100 pb-3">
+              1. Informations du Salon
+            </h3>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                Numéro WhatsApp du Salon
+              </label>
+              <input
+                type="text"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="ex: +21622000000"
+                className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-2">
+            <h3 className="font-bold text-sm text-slate-900 border-b border-slate-100 pb-3">
+              2. Modèle de Message de Rappel (`wa.me`)
+            </h3>
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                <label className="text-[11px] font-bold text-slate-600">Votre texte</label>
+                <span className="text-[10px] text-slate-400">
+                  Variables : {"{{client_name}}"}, {"{{salon_name}}"}, {"{{time}}"}, {"{{service}}"}
+                </span>
+              </div>
+              <textarea
+                value={template}
+                onChange={(e) => setTemplate(e.target.value)}
+                rows={4}
+                className="w-full border border-slate-200 bg-slate-50 p-3.5 rounded-2xl text-xs font-medium leading-relaxed"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-4 border-t border-slate-100">
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-2xl text-xs font-bold transition shadow-sm cursor-pointer"
+            >
+              {saving ? "Enregistrement..." : "Enregistrer le modèle"}
+            </button>
+          </div>
+        </form>
+
+        <div>
+          <div className="bg-slate-900 text-white rounded-3xl p-6 space-y-4 shadow-md">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+              <Sparkles size={12} /> Aperçu Rappel Client
+            </span>
+            <div className="bg-emerald-950/60 border border-emerald-500/20 p-4 rounded-2xl text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">
+              {template
+                .replace(/\{\{client_name\}\}/g, "Sami")
+                .replace(/\{\{salon_name\}\}/g, salonName)
+                .replace(/\{\{time\}\}/g, `${tomorrowStr} à 15:30`)
+                .replace(/\{\{service\}\}/g, "Coupe & Barbe")}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* KPI & Crédits Messages */}
-      <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-lg grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="space-y-1">
-          <span className="text-[10px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
-            <Sparkles size={12} /> Crédits Gratuits Restants
-          </span>
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-3xl font-black text-emerald-400">{freeCredits}</h2>
-            <span className="text-xs text-slate-400">/ 50 messages offerts</span>
-          </div>
-          <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden mt-2">
-            <div
-              className="bg-emerald-500 h-full transition-all"
-              style={{ width: `${Math.min(100, (freeCredits / 50) * 100)}%` }}
+      {/* SECTION 2 : Gestion des Codes Promo */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs p-6 space-y-6">
+        <div className="border-b border-slate-100 pb-4">
+          <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+            <Tag className="text-emerald-600" size={20} /> Gestion des Codes Promo & Conditions
+          </h3>
+          <p className="text-xs text-slate-500 font-medium">
+            Définissez des montants minimums d'achat et des dates d'expiration pour vos codes de réduction.
+          </p>
+        </div>
+
+        <form onSubmit={handleCreatePromo} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/85 items-end">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Code Promo</label>
+            <input
+              type="text"
+              value={newCode}
+              onChange={(e) => setNewCode(e.target.value)}
+              placeholder="ex: VIP2026"
+              className="w-full uppercase bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-bold"
+              required
             />
           </div>
-        </div>
 
-        <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6">
-          <span className="text-[10px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
-            <Users size={12} /> Audience Clients Joignables
-          </span>
-          <h2 className="text-3xl font-black text-white">{clientCount}</h2>
-          <p className="text-[11px] text-slate-400">Numéros uniques issus des réservations</p>
-        </div>
-
-        <div className="space-y-1 border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6">
-          <span className="text-[10px] font-extrabold text-indigo-300 uppercase tracking-wider flex items-center gap-1">
-            <MessageSquare size={12} /> Statut WhatsApp API
-          </span>
-          <div className="pt-1">
-            {isConnected ? (
-              <span className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold">
-                <CheckCircle2 size={14} /> Compte Connecté ({totalSent} envoyés)
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold">
-                <AlertCircle size={14} /> Non Connecté
-              </span>
-            )}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Type & Valeur</label>
+            <div className="flex gap-1">
+              <select
+                value={newDiscountType}
+                onChange={(e) => setNewDiscountType(e.target.value as "percent" | "fixed")}
+                className="bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-medium"
+              >
+                <option value="percent">%</option>
+                <option value="fixed">TND</option>
+              </select>
+              <input
+                type="number"
+                step="0.01"
+                value={newDiscountValue}
+                onChange={(e) => setNewDiscountValue(e.target.value)}
+                placeholder="Valeur"
+                className="w-full bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-medium"
+                required
+              />
+            </div>
           </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Min. Achat (TND)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={newMinPurchase}
+              onChange={(e) => setNewMinPurchase(e.target.value)}
+              placeholder="ex: 30 (optionnel)"
+              className="w-full bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-medium"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Expiration</label>
+            <input
+              type="date"
+              value={newExpiresAt}
+              onChange={(e) => setNewExpiresAt(e.target.value)}
+              className="w-full bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-medium"
+            />
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              disabled={creatingPromo}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Plus size={14} /> Créer
+            </button>
+          </div>
+        </form>
+
+        <div className="space-y-3">
+          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Codes enregistrés ({promoList.length})</h4>
+          {promoList.length === 0 ? (
+            <p className="text-xs text-slate-400 italic py-4 text-center bg-slate-50 rounded-2xl">
+              Aucun code promo créé pour le moment.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {promoList.map((promo) => {
+                const isExpired = promo.expires_at && new Date(promo.expires_at) < new Date();
+                return (
+                  <div
+                    key={promo.id}
+                    className={`p-4 rounded-2xl border flex items-center justify-between transition ${
+                      promo.is_active && !isExpired ? "bg-white border-slate-200 shadow-2xs" : "bg-slate-100 border-slate-200 opacity-60"
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-xs text-slate-900 font-mono tracking-wider">{promo.code}</span>
+                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${isExpired ? "bg-rose-100 text-rose-800" : promo.is_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>
+                          {isExpired ? "Expiré" : promo.is_active ? "Actif" : "Inactif"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-bold text-indigo-600">
+                        -{promo.discount_value}{promo.discount_type === "percent" ? "%" : " TND"}
+                        {Number(promo.min_purchase) > 0 && <span className="text-[10px] text-slate-400 font-normal block">Min: {promo.min_purchase} TND</span>}
+                        {promo.expires_at && <span className="text-[10px] text-slate-400 font-normal block">Expire: {new Date(promo.expires_at).toLocaleDateString('fr-FR')}</span>}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePromo(promo)}
+                        className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                      >
+                        {promo.is_active ? "Désactiver" : "Activer"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePromo(promo.id)}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                        title="Supprimer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* --- ONGLET TEMPLATES & CAMPAGNES --- */}
-      {activeTab === "templates" && (
-        <div className="space-y-6">
-          {/* Formulaire de Connexion */}
-          <form onSubmit={handleConnectWhatsApp} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Key size={18} className="text-emerald-600" />
-                <h2 className="font-bold text-sm text-slate-900">Connexion Compte WhatsApp Business (Meta Cloud API)</h2>
-              </div>
-            </div>
+      {/* SECTION 3 : Rappels Rendez-vous (wa.me) */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs p-6 space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div>
+            <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <Users className="text-emerald-600" size={20} /> Rappels Rendez-vous (`wa.me`)
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">
+              Cliquez sur chaque client pour ouvrir WhatsApp avec son message personnalisé.
+            </p>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">Phone Number ID</label>
-                <input
-                  type="text"
-                  value={phoneNumberId}
-                  onChange={(e) => setPhoneNumberId(e.target.value)}
-                  placeholder="ex: 104928374650192"
-                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-mono"
-                />
-              </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {filteredBookings.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleMarkAllAsSent}
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 size={14} /> Tout marquer comme relancé
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetStatus}
+                  title="Réinitialiser les statuts"
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-600 p-1.5 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              </>
+            )}
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">WhatsApp Business Account ID</label>
-                <input
-                  type="text"
-                  value={wabaId}
-                  onChange={(e) => setWabaId(e.target.value)}
-                  placeholder="ex: 987654321098765"
-                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">Permanent Access Token</label>
-                <input
-                  type="password"
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  placeholder="EAABsbCS1iHgBO..."
-                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-              >
-                {isConnected ? "Mettre à jour la connexion" : "Connecter WhatsApp Business"}
-              </button>
-            </div>
-          </form>
-
-          {/* Liste des Modèles */}
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="font-bold text-sm text-slate-900">Modèles & Automatisations</h2>
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
               <button
                 type="button"
-                onClick={handleSaveTemplates}
-                disabled={saving}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                onClick={() => setFilterMode("today")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  filterMode === "today"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
               >
-                <Save size={14} /> Sauvegarder les modifications
+                Aujourd'hui ({allBookings.filter((b) => b.date === todayStr).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode("tomorrow")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  filterMode === "tomorrow"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                Demain ({allBookings.filter((b) => b.date === tomorrowStr).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterMode("upcoming")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  filterMode === "upcoming"
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                À venir ({allBookings.length})
               </button>
             </div>
+          </div>
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {templates.map((tpl, idx) => (
-                <div key={tpl.type} className="bg-white rounded-3xl p-5 border border-slate-100 shadow-2xs flex flex-col justify-between space-y-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                        {getTemplateIcon(tpl.type)}
-                        {tpl.type === "reminder" ? "Rappels" : tpl.type === "promo" ? "Codes Promo" : "Ventes"}
+        <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+          <span>Clients affichés : {filteredBookings.length}</span>
+          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-[11px]">
+            {filteredBookings.filter((b) => sentStatus[b.id]).length} / {filteredBookings.length}{" "}
+            relancés sur cette vue
+          </span>
+        </div>
+
+        {loadingBookings ? (
+          <div className="py-8 text-center text-xs text-slate-400">
+            Chargement des réservations...
+          </div>
+        ) : filteredBookings.length === 0 ? (
+          <div className="py-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            Aucun rendez-vous trouvé pour cette période.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[450px] overflow-y-auto pr-2">
+            {filteredBookings.map((client) => {
+              const isSent = sentStatus[client.id];
+
+              return (
+                <div
+                  key={client.id}
+                  className={`flex items-center justify-between p-4 rounded-2xl border transition ${
+                    isSent
+                      ? "bg-emerald-50/50 border-emerald-200"
+                      : "bg-slate-50/70 border-slate-200/80 hover:border-slate-300"
+                  }`}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-900">{client.name}</span>
+                      <span className="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded-md font-semibold">
+                        {client.phone || "Numéro manquant"}
                       </span>
-
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={tpl.is_active}
-                          onChange={(e) => updateTemplateField(idx, "is_active", e.target.checked)}
-                          className="rounded text-indigo-600 focus:ring-0"
-                        />
-                        <span className="text-[10px] font-bold text-slate-500">
-                          {tpl.is_active ? "Auto Actif" : "Manuel"}
-                        </span>
-                      </label>
                     </div>
-
-                    <input
-                      type="text"
-                      value={tpl.title}
-                      onChange={(e) => updateTemplateField(idx, "title", e.target.value)}
-                      className="w-full border border-slate-200 bg-slate-50 px-3 py-2 rounded-xl text-xs font-bold text-slate-900"
-                    />
-
-                    {tpl.type === "promo" && (
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Code Promo Associé</label>
-                        <input
-                          type="text"
-                          value={tpl.promo_code || ""}
-                          onChange={(e) => updateTemplateField(idx, "promo_code", e.target.value.toUpperCase())}
-                          placeholder="ex: SUMMER20"
-                          className="w-full border border-amber-200 bg-amber-50/50 px-3 py-1.5 rounded-xl text-xs font-mono font-bold text-amber-800"
-                        />
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Message WhatsApp</label>
-                      <textarea
-                        rows={4}
-                        value={tpl.message_body}
-                        onChange={(e) => updateTemplateField(idx, "message_body", e.target.value)}
-                        className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs text-slate-700 leading-relaxed"
-                      />
-                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">✂️ {client.service}</p>
+                    <p className="text-[10px] text-indigo-600 font-bold flex items-center gap-1">
+                      <Calendar size={11} /> {client.date} à {client.time}
+                    </p>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => handleSendCampaign(tpl)}
-                    disabled={sendingType === tpl.type || freeCredits <= 0}
-                    className="w-full bg-slate-900 hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+                    disabled={!client.phone}
+                    onClick={() => handleWaMeSend(client)}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition shadow-2xs cursor-pointer shrink-0 disabled:opacity-40 ${
+                      isSent
+                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        : "bg-slate-900 text-white hover:bg-slate-800"
+                    }`}
                   >
-                    <Send size={13} />
-                    {sendingType === tpl.type ? "Envoi en cours..." : "Diffuser maintenant"}
+                    {isSent ? (
+                      <>
+                        <CheckCircle2 size={14} /> Relancé
+                      </>
+                    ) : (
+                      <>
+                        <Send size={14} /> Envoyer <ExternalLink size={12} className="opacity-60" />
+                      </>
+                    )}
                   </button>
                 </div>
-              ))}
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 4 : Diffusions Promo & Publicité */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs p-6 space-y-6">
+        <div className="border-b border-slate-100 pb-4">
+          <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+            <Megaphone className="text-emerald-600" size={20} /> Diffusions Promo & Publicité WhatsApp
+          </h3>
+          <p className="text-xs text-slate-500 font-medium">
+            Générez une annonce promotionnelle prête à être collée dans vos groupes WhatsApp, statuts ou listes de diffusion.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                Titre de l'annonce
+              </label>
+              <input
+                type="text"
+                value={promoTitle}
+                onChange={(e) => setPromoTitle(e.target.value)}
+                className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                Détail de l'offre / Remise
+              </label>
+              <input
+                type="text"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                Validité / Limite de temps
+              </label>
+              <input
+                type="text"
+                value={validUntil}
+                onChange={(e) => setValidUntil(e.target.value)}
+                className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
+              />
             </div>
           </div>
-        </div>
-      )}
 
-      {/* --- ONGLET HISTORIQUE --- */}
-      {activeTab === "history" && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h2 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-              <History size={16} className="text-indigo-600" /> Historique des messages diffusés
-            </h2>
-            <span className="text-xs text-slate-400">{historyLogs.length} campagne(s) enregistrée(s)</span>
-          </div>
-
-          {historyLogs.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 text-xs">Aucun message n'a encore été diffusé.</div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {historyLogs.map((log) => (
-                <div key={log.id} className="py-4 flex items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-xs text-slate-900">{log.title}</h4>
-                      <span className="bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                        <CheckCheck size={12} /> {log.status}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      Envoyé le {log.sentAt} à <strong>{log.recipientsCount} client(s)</strong>
-                    </p>
-                  </div>
-
-                  <span className="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-xl">
-                    -{log.recipientsCount} crédits
-                  </span>
-                </div>
-              ))}
+          <div className="space-y-4">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+              <Sparkles size={12} /> Aperçu du message publicitaire
+            </span>
+            <div className="bg-slate-900 text-emerald-300 p-4 rounded-2xl text-xs font-mono leading-relaxed whitespace-pre-wrap shadow-inner">
+              {broadcastMessage}
             </div>
-          )}
+
+            <button
+              type="button"
+              onClick={handleCopyBroadcast}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+            >
+              {promoCopied ? (
+                <>
+                  <CheckCircle2 size={16} /> Annonce copiée avec succès !
+                </>
+              ) : (
+                <>
+                  <Copy size={16} /> Copier l'annonce pour WhatsApp
+                </>
+              )}
+            </button>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

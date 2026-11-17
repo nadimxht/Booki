@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { 
   ShoppingBag, Plus, Trash2, Edit, DollarSign, Package, 
   Receipt, Palette, Image as ImageIcon, X, Check, FileText, 
-  CreditCard, Search, ExternalLink, Calendar, Sparkles, Ticket, CheckCircle2 
+  CreditCard, Search, ExternalLink, Calendar, Sparkles, Ticket, CheckCircle2, Printer, AlertTriangle 
 } from "lucide-react";
 
 interface StoreProduct {
@@ -48,16 +48,10 @@ interface StoreDesign {
   layout_style: string;
 }
 
-const COVER_PRESETS = [
-  { name: "Salon Minimaliste Chic", url: "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1600&q=80" },
-  { name: "Cosmétiques Botaniques", url: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=1600&q=80" },
-  { name: "Ambiance Coiffure Pro", url: "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=1600&q=80" },
-];
-
 export default function AdminStorePage() {
   const supabase = createClient();
   const [businessId, setBusinessId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"products" | "sales" | "invoices" | "design">("sales");
+  const [activeTab, setActiveTab] = useState<"sales" | "products">("sales");
 
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -135,11 +129,13 @@ export default function AdminStorePage() {
     setLoading(false);
   }
 
+  // 1. Validation de la commande et déduction automatique du stock en base & UI
   async function handleMarkAsPaid(sale: Sale) {
     if (!businessId) return;
     if (!confirm(`Confirmer l'encaissement de la commande ${sale.invoice_number} pour ${sale.client_name} ?`)) return;
 
     try {
+      // Met à jour le statut en 'paid' (le trigger SQL se charge de déduire le stock en base)
       const { error: saleError } = await supabase
         .from("store_sales")
         .update({ status: "paid" })
@@ -148,23 +144,20 @@ export default function AdminStorePage() {
 
       if (saleError) throw new Error(saleError.message);
 
+      // Mise à jour immédiate du state local des produits pour refléter la baisse de stock instantanément
       if (sale.items && Array.isArray(sale.items)) {
-        for (const item of sale.items) {
-          if (item.product_id) {
-            const prod = products.find(p => p.id === item.product_id);
-            if (prod) {
-              const newStock = Math.max(0, prod.stock - item.quantity);
-              await supabase
-                .from("store_products")
-                .update({ stock: newStock })
-                .eq("id", item.product_id)
-                .eq("business_id", businessId);
+        setProducts((prevProducts) =>
+          prevProducts.map((prod) => {
+            const purchasedItem = sale.items.find((i) => i.product_id === prod.id);
+            if (purchasedItem) {
+              return { ...prod, stock: Math.max(0, prod.stock - purchasedItem.quantity) };
             }
-          }
-        }
+            return prod;
+          })
+        );
       }
 
-      alert("Commande encaissée et stock déduit avec succès !");
+      alert("Commande encaissée et stock mis à jour avec succès !");
       fetchData(businessId);
     } catch (err: any) {
       alert("Erreur lors de la validation : " + err.message);
@@ -233,23 +226,6 @@ export default function AdminStorePage() {
     fetchData(businessId);
   }
 
-  async function handleSaveDesign(e: React.FormEvent) {
-    e.preventDefault();
-    if (!businessId) return;
-    setSaving(true);
-
-    const { error } = await supabase
-      .from("store_settings")
-      .upsert({ business_id: businessId, ...design }, { onConflict: "business_id" });
-
-    setSaving(false);
-    if (error) {
-      alert("Erreur de sauvegarde du design : " + error.message);
-    } else {
-      alert("Design de la boutique mis à jour avec succès !");
-    }
-  }
-
   const filteredSales = sales.filter(s => {
     const query = searchQuery.toLowerCase();
     const matchName = s.client_name?.toLowerCase().includes(query) || false;
@@ -262,12 +238,39 @@ export default function AdminStorePage() {
     .filter(s => s.status === "paid")
     .reduce((acc, curr) => acc + (Number(curr.total_amount) || 0), 0);
 
+  // 2. Calcul des produits en stock faible (<= 3 unités)
+  const lowStockProducts = products.filter(p => p.stock <= 3);
+
   if (loading) {
     return <div className="flex justify-center items-center min-h-[400px] text-xs text-slate-400 font-medium">Chargement du Store...</div>;
   }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12">
+      
+      {/* --- BANDEAU D'ALERTE STOCK FAIBLE --- */}
+      {lowStockProducts.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-5 py-4 rounded-3xl flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <h4 className="font-bold text-xs">Alerte de stock faible ({lowStockProducts.length} produit{lowStockProducts.length > 1 ? 's' : ''})</h4>
+              <p className="text-[11px] text-amber-700">
+                {lowStockProducts.map(p => `${p.name} (${p.stock} restants)`).join(", ")}
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveTab("products")}
+            className="bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold px-3.5 py-2 rounded-xl transition cursor-pointer shadow-2xs whitespace-nowrap"
+          >
+            Gérer les stocks
+          </button>
+        </div>
+      )}
+
       {/* En-tête & Onglets */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -277,10 +280,10 @@ export default function AdminStorePage() {
           </p>
         </div>
 
-        <div className="flex bg-slate-200/70 p-1 rounded-2xl w-fit flex-wrap">
+        <div className="flex bg-slate-200/70 p-1 rounded-2xl w-fit">
           <button
             onClick={() => setActiveTab("sales")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               activeTab === "sales" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -288,27 +291,14 @@ export default function AdminStorePage() {
           </button>
           <button
             onClick={() => setActiveTab("products")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               activeTab === "products" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
             }`}
           >
             <Package size={14} /> Produits ({products.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("invoices")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "invoices" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <FileText size={14} /> Factures
-          </button>
-          <button
-            onClick={() => setActiveTab("design")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === "design" ? "bg-white text-slate-900 shadow-xs" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <Palette size={14} /> Design Store
+            {lowStockProducts.length > 0 && (
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+            )}
           </button>
         </div>
       </div>
@@ -387,7 +377,7 @@ export default function AdminStorePage() {
 
                         <button
                           onClick={() => setSelectedSaleForInvoice(sale)}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
                         >
                           <FileText size={14} /> Facture
                         </button>
@@ -424,11 +414,11 @@ export default function AdminStorePage() {
         </div>
       )}
 
-      {/* --- ONGLET PRODUITS --- */}
+      {/* --- ONGLET PRODUITS & GESTION DES STOCKS --- */}
       {activeTab === "products" && (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="font-bold text-sm text-slate-900">Catalogue Produits</h2>
+            <h2 className="font-bold text-sm text-slate-900">Catalogue Produits & Stocks</h2>
             <button
               onClick={openProductModalForCreate}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer"
@@ -438,62 +428,82 @@ export default function AdminStorePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products.map((prod) => (
-              <div key={prod.id} className="bg-white rounded-3xl border border-slate-100 shadow-2xs overflow-hidden flex flex-col justify-between group">
-                <div>
-                  {prod.image_url ? (
-                    <div className="h-44 w-full overflow-hidden bg-slate-100 relative">
-                      <img src={prod.image_url} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
-                    </div>
-                  ) : (
-                    <div className="h-32 bg-slate-100 flex items-center justify-center text-slate-400">
-                      <ShoppingBag size={32} />
-                    </div>
+            {products.map((prod) => {
+              const isLowStock = prod.stock <= 3;
+              return (
+                <div key={prod.id} className={`bg-white rounded-3xl border shadow-2xs overflow-hidden flex flex-col justify-between group relative ${
+                  isLowStock ? 'border-amber-300 ring-1 ring-amber-300/40' : 'border-slate-100'
+                }`}>
+                  {isLowStock && (
+                    <span className="absolute top-3 left-3 z-10 bg-rose-500 text-white text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow-md flex items-center gap-1">
+                      <AlertTriangle size={11} /> Stock Faible ({prod.stock})
+                    </span>
                   )}
 
-                  <div className="p-5 space-y-2">
-                    <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                      {prod.category}
-                    </span>
-                    <h3 className="font-bold text-sm text-slate-900">{prod.name}</h3>
-                    <p className="text-xs text-slate-500 line-clamp-2">{prod.description || "Pas de description."}</p>
+                  <div>
+                    {prod.image_url ? (
+                      <div className="h-44 w-full overflow-hidden bg-slate-100 relative">
+                        <img src={prod.image_url} alt={prod.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                      </div>
+                    ) : (
+                      <div className="h-32 bg-slate-100 flex items-center justify-center text-slate-400">
+                        <ShoppingBag size={32} />
+                      </div>
+                    )}
+
+                    <div className="p-5 space-y-2">
+                      <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        {prod.category}
+                      </span>
+                      <h3 className="font-bold text-sm text-slate-900">{prod.name}</h3>
+                      <p className="text-xs text-slate-500 line-clamp-2">{prod.description || "Pas de description."}</p>
+                    </div>
+                  </div>
+
+                  <div className="p-5 pt-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div className="flex flex-col">
+                      <span className={`text-[10px] font-bold uppercase ${isLowStock ? 'text-rose-600 font-black' : 'text-slate-400'}`}>
+                        Stock : {prod.stock} unités
+                      </span>
+                      <span className="font-extrabold text-indigo-600 text-sm">{prod.price} TND</span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openProductModalForEdit(prod)} className="p-2 hover:bg-white rounded-xl text-slate-500 transition shadow-2xs cursor-pointer" title="Modifier">
+                        <Edit size={14} />
+                      </button>
+                      <button onClick={() => handleDeleteProduct(prod.id)} className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition cursor-pointer" title="Supprimer">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-
-                <div className="p-5 pt-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase">Stock : {prod.stock}</span>
-                    <span className="font-extrabold text-indigo-600 text-sm">{prod.price} TND</span>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => openProductModalForEdit(prod)} className="p-2 hover:bg-white rounded-xl text-slate-500 transition shadow-2xs cursor-pointer" title="Modifier">
-                      <Edit size={14} />
-                    </button>
-                    <button onClick={() => handleDeleteProduct(prod.id)} className="p-2 hover:bg-rose-50 rounded-xl text-rose-500 transition cursor-pointer" title="Supprimer">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* --- ONGLET FACTURES --- */}
-      {activeTab === "invoices" && (
-        <div className="space-y-6">
-          <h2 className="font-bold text-sm text-slate-900">Générateur & Visionneuse de Factures</h2>
+      {/* --- MODALE DE FACTURE --- */}
+      {selectedSaleForInvoice && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-100">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <span className="font-bold text-xs text-slate-700 flex items-center gap-2">
+                <FileText size={16} className="text-indigo-600" /> Aperçu de la Facture
+              </span>
+              <button onClick={() => setSelectedSaleForInvoice(null)} className="p-2 hover:bg-slate-200 rounded-xl text-slate-500 transition cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
 
-          {selectedSaleForInvoice ? (
-            <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-md max-w-2xl mx-auto space-y-6 font-sans">
+            <div className="p-8 overflow-y-auto space-y-6 bg-white font-sans">
               <div className="flex justify-between items-start border-b border-slate-100 pb-6">
                 <div>
                   <h2 className="text-xl font-black text-slate-900">FACTURE / REÇU</h2>
                   <p className="text-xs text-indigo-600 font-bold">{selectedSaleForInvoice.invoice_number}</p>
                   {selectedSaleForInvoice.pickup_code && (
-                    <span className="inline-block mt-1 bg-slate-100 text-slate-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md">
+                    <span className="inline-block mt-1.5 bg-slate-100 text-slate-800 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-md">
                       Code de Retrait : {selectedSaleForInvoice.pickup_code}
                     </span>
                   )}
@@ -507,7 +517,7 @@ export default function AdminStorePage() {
               <div className="text-xs space-y-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase">Facturé à :</span>
                 <p className="font-bold text-slate-900">{selectedSaleForInvoice.client_name}</p>
-                {selectedSaleForInvoice.client_phone && <p className="text-slate-500">{selectedSaleForInvoice.client_phone}</p>}
+                {selectedSaleForInvoice.client_phone && <p className="text-slate-500">Tél : {selectedSaleForInvoice.client_phone}</p>}
               </div>
 
               <table className="w-full text-xs text-left">
@@ -537,204 +547,82 @@ export default function AdminStorePage() {
                 </tbody>
               </table>
 
-              <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+              <div className="flex justify-between items-center pt-4 border-t border-slate-100 text-xs">
                 <div>
-                  <span className="text-xs text-slate-500 font-medium block">Mode de paiement : <strong>{selectedSaleForInvoice.payment_method}</strong></span>
-                  <span className="text-xs text-slate-500 font-medium">Statut : <strong className={selectedSaleForInvoice.status === 'paid' ? 'text-emerald-600' : 'text-amber-600'}>{selectedSaleForInvoice.status === 'paid' ? 'Payé' : 'En attente'}</strong></span>
+                  <span className="text-slate-500 font-medium block">Mode de paiement : <strong>{selectedSaleForInvoice.payment_method}</strong></span>
+                  <span className="text-slate-500 font-medium">Statut : <strong className={selectedSaleForInvoice.status === 'paid' ? 'text-emerald-600' : 'text-amber-600'}>{selectedSaleForInvoice.status === 'paid' ? 'Payé' : 'En attente'}</strong></span>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Total</span>
                   <span className="text-xl font-black text-indigo-600">{selectedSaleForInvoice.total_amount} TND</span>
                 </div>
               </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button onClick={() => setSelectedSaleForInvoice(null)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition cursor-pointer">
+                Fermer
+              </button>
+              <button onClick={() => window.print()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-2 cursor-pointer">
+                <Printer size={15} /> Imprimer / Télécharger PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL PRODUIT --- */}
+      {isProductModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <h2 className="font-bold text-base text-slate-900">{editingProductId ? "Modifier le produit" : "Ajouter un produit au Store"}</h2>
+              <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 cursor-pointer"><X size={18} /></button>
+            </div>
+
+            <form onSubmit={handleSaveProduct} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Nom du produit</label>
+                <input type="text" value={pName} onChange={(e) => setPName(e.target.value)} placeholder="ex: Shampoing Hydratant 500ml" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Prix de vente (TND)</label>
+                  <input type="number" step="0.01" value={pPrice} onChange={(e) => setPPrice(e.target.value)} placeholder="ex: 35.00" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Stock disponible</label>
+                  <input type="number" value={pStock} onChange={(e) => setPStock(e.target.value)} placeholder="ex: 15" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Catégorie</label>
+                <input type="text" value={pCategory} onChange={(e) => setPCategory(e.target.value)} placeholder="ex: Soins Capillaires" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">URL de l'image (Optionnel)</label>
+                <input type="url" value={pImageUrl} onChange={(e) => setPImageUrl(e.target.value)} placeholder="https://..." className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">Description</label>
+                <textarea value={pDescription} onChange={(e) => setPDescription(e.target.value)} placeholder="Description détaillée..." className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium h-20 resize-none" />
+              </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button
-                  onClick={() => window.print()}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
-                >
-                  Imprimer / Télécharger PDF
+                <button type="button" onClick={() => setIsProductModalOpen(false)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition cursor-pointer">Annuler</button>
+                <button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer">
+                  {saving ? "Enregistrement..." : "Enregistrer"}
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-3xl p-8 border border-slate-100 text-center text-slate-400 text-xs">
-              Sélectionnez une commande dans l'onglet <strong>Commandes</strong> pour générer sa facture détaillée.
-            </div>
-          )}
+            </form>
+          </div>
         </div>
       )}
 
-      {/* --- ONGLET DESIGN STORE --- */}
-      {activeTab === "design" && (
-        <form onSubmit={handleSaveDesign} className="bg-white rounded-3xl p-6 border border-slate-100 shadow-2xs max-w-2xl mx-auto space-y-6">
-          <h2 className="font-bold text-base text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
-            <Sparkles size={16} className="text-indigo-600" /> Personnalisation & Couvertures Professionnelles
-          </h2>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Titre de bienvenue</label>
-            <input
-              type="text"
-              value={design.welcome_title}
-              onChange={(e) => setDesign({ ...design, welcome_title: e.target.value })}
-              className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Sous-titre / Message d'accroche</label>
-            <input
-              type="text"
-              value={design.welcome_subtitle}
-              onChange={(e) => setDesign({ ...design, welcome_subtitle: e.target.value })}
-              className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-[11px] font-bold text-slate-600">Suggestions de bannières professionnelles (Cliquez pour appliquer)</label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {COVER_PRESETS.map((preset, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => setDesign({ ...design, banner_url: preset.url })}
-                  className="cursor-pointer group relative rounded-2xl overflow-hidden border-2 border-slate-200 hover:border-indigo-600 transition"
-                >
-                  <img src={preset.url} alt={preset.name} className="w-full h-20 object-cover group-hover:scale-105 transition duration-300" />
-                  <div className="absolute inset-0 bg-slate-900/40 flex items-end p-2">
-                    <span className="text-[10px] font-bold text-white">{preset.name}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">URL de la Bannière personnalisée</label>
-            <input
-              type="url"
-              value={design.banner_url}
-              onChange={(e) => setDesign({ ...design, banner_url: e.target.value })}
-              placeholder="https://images.unsplash.com/..."
-              className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">Couleur principale</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={design.primary_color}
-                  onChange={(e) => setDesign({ ...design, primary_color: e.target.value })}
-                  className="w-10 h-10 rounded-xl border-0 cursor-pointer p-0"
-                />
-                <span className="text-xs font-bold text-slate-700">{design.primary_color}</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">Disposition des produits</label>
-              <select
-                value={design.layout_style}
-                onChange={(e) => setDesign({ ...design, layout_style: e.target.value })}
-                className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
-              >
-                <option value="grid">Grille de cartes (Recommandé)</option>
-                <option value="list">Liste horizontale</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-4 border-t border-slate-100">
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm transition cursor-pointer"
-            >
-              {saving ? "Sauvegarde..." : "Enregistrer le Design"}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* --- MODAL PRODUIT CORRIGÉ --- */}
-      {isProductModalOpen && (
-  <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-    <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl space-y-6 max-h-[90vh] overflow-y-auto">
-      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-        <h2 className="font-bold text-base text-slate-900">{editingProductId ? "Modifier le produit" : "Ajouter un produit au Store"}</h2>
-        <button onClick={() => setIsProductModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 cursor-pointer"><X size={18} /></button>
-      </div>
-
-      <form onSubmit={handleSaveProduct} className="space-y-4">
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 mb-1">Nom du produit</label>
-          <input type="text" value={pName} onChange={(e) => setPName(e.target.value)} placeholder="ex: Shampoing Hydratant 500ml" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Prix de vente (TND)</label>
-            <input type="number" step="0.01" value={pPrice} onChange={(e) => setPPrice(e.target.value)} placeholder="ex: 35.00" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Stock disponible</label>
-            <input type="number" value={pStock} onChange={(e) => setPStock(e.target.value)} placeholder="ex: 15" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" required />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 mb-1">Catégorie</label>
-          <input type="text" value={pCategory} onChange={(e) => setPCategory(e.target.value)} placeholder="ex: Soins Capillaires" className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
-        </div>
-
-        {/* Suggestions d'images Unsplash cliquables */}
-        <div className="space-y-2">
-          <label className="block text-[11px] font-bold text-slate-600">Suggestions d'images (Cliquez pour appliquer)</label>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { name: "Shampoing Pro", url: "https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&w=600&q=80" },
-              { name: "Flacon Cosméto", url: "https://images.unsplash.com/photo-1526947425960-945c6e72858f?auto=format&fit=crop&w=600&q=80" },
-            ].map((preset, idx) => (
-              <div
-                key={idx}
-                onClick={() => setPImageUrl(preset.url)}
-                className={`cursor-pointer group relative rounded-xl overflow-hidden border-2 transition ${
-                  pImageUrl === preset.url ? "border-indigo-600 ring-2 ring-indigo-600/20" : "border-slate-200 hover:border-slate-300"
-                }`}
-              >
-                <img src={preset.url} alt={preset.name} className="w-full h-14 object-cover group-hover:scale-105 transition duration-300" />
-                <div className="absolute inset-0 bg-slate-900/40 flex items-end p-1">
-                  <span className="text-[9px] font-bold text-white truncate">{preset.name}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 mb-1">URL de l'image (Optionnel)</label>
-          <input type="url" value={pImageUrl} onChange={(e) => setPImageUrl(e.target.value)} placeholder="https://..." className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium" />
-        </div>
-
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 mb-1">Description</label>
-          <textarea value={pDescription} onChange={(e) => setPDescription(e.target.value)} placeholder="Description détaillée..." className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium h-20 resize-none" />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-          <button type="button" onClick={() => setIsProductModalOpen(false)} className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition cursor-pointer">Annuler</button>
-          <button type="submit" disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer">
-            {saving ? "Enregistrement..." : "Enregistrer"}
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-)}
     </div>
   );
 }

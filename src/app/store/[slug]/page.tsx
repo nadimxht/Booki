@@ -5,16 +5,22 @@ import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { 
   ShoppingBag, ShoppingCart, Plus, Minus, X, CheckCircle, 
-  Store, Phone, User, CreditCard, Sparkles, AlertCircle, Search, Filter, Ticket 
+  Store, Phone, User, CreditCard, Sparkles, AlertCircle, Search, Filter, Ticket, MapPin, ExternalLink, Scissors 
 } from "lucide-react";
 
-interface Business {
-  id: string;
+interface BusinessSettings {
+  business_id: string;
   name: string;
   slug: string;
-  location?: string;
-  whatsapp_number?: string;
   description?: string;
+  booking_title?: string;
+  booking_subtitle?: string;
+  location?: string;
+  maps_url?: string;
+  whatsapp_number?: string;
+  hero_image_url?: string;
+  store_image?: string;
+  color_palette?: string; // Désormais unifié dans business_settings
 }
 
 interface StoreProduct {
@@ -45,13 +51,13 @@ function StoreContent() {
   const params = useParams();
   const slug = params?.slug as string;
 
-  const [business, setBusiness] = useState<Business | null>(null);
+  const [settings, setSettings] = useState<BusinessSettings | null>(null);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [design, setDesign] = useState<StoreDesign>({
     banner_url: "",
-    welcome_title: "Bienvenue sur notre boutique",
-    welcome_subtitle: "Découvrez nos produits de soins professionnels",
-    primary_color: "#4f46e5",
+    welcome_title: "Boutique en ligne",
+    welcome_subtitle: "Découvrez nos produits professionnels",
+    primary_color: "#2563EB",
     layout_style: "grid"
   });
   const [loading, setLoading] = useState(true);
@@ -71,7 +77,7 @@ function StoreContent() {
   const [generatedPickupCode, setGeneratedPickupCode] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
-  // Suivi de commande (Toggle state)
+  // Suivi de commande
   const [showTrackingInput, setShowTrackingInput] = useState(false);
   const [trackingCode, setTrackingCode] = useState("");
   const [trackedOrder, setTrackedOrder] = useState<any | null>(null);
@@ -83,37 +89,60 @@ function StoreContent() {
       if (!slug) return;
       setLoading(true);
 
-      // 1. Récupérer l'entreprise par son slug unique
-      const { data: bizData, error: bizError } = await supabase
-        .from("businesses")
-        .select("*")
-        .eq("slug", slug)
-        .single();
+      // 1. Récupération alignée sur la table unifiée "business_settings"
+      let { data: settingsData, error: settingsError } = await supabase
+        .from('business_settings')
+        .select('*')
+        .eq('slug', slug)
+        .maybeSingle();
 
-      if (bizError || !bizData) {
+      if (!settingsData) {
+        const { data: bizData } = await supabase
+          .from('businesses')
+          .select('*')
+          .eq('slug', slug)
+          .maybeSingle();
+
+        if (bizData) {
+          const { data: linkedSettings } = await supabase
+            .from('business_settings')
+            .select('*')
+            .eq('business_id', bizData.id)
+            .maybeSingle();
+
+          settingsData = {
+            ...bizData,
+            ...(linkedSettings || {}),
+            business_id: bizData.id,
+            name: linkedSettings?.name || bizData.name,
+            slug: bizData.slug,
+          };
+        }
+      }
+
+      if (!settingsData) {
         setLoading(false);
         return;
       }
 
-      setBusiness(bizData);
-      const bizId = bizData.id;
+      setSettings(settingsData);
+      const bizId = settingsData.business_id;
 
-      // 2. Récupérer les produits et le design filtrés par business_id 🔒
+      // 2. Récupérer les produits et réglages de design de la boutique
       const [prodRes, designRes] = await Promise.all([
         supabase.from("store_products").select("*").eq("business_id", bizId).gt("stock", 0).order("name"),
         supabase.from("store_settings").select("*").eq("business_id", bizId).maybeSingle()
       ]);
 
       if (prodRes.data) setProducts(prodRes.data);
-      if (designRes.data) {
-        setDesign({
-          banner_url: designRes.data.banner_url || "",
-          welcome_title: designRes.data.welcome_title || "Bienvenue sur notre boutique",
-          welcome_subtitle: designRes.data.welcome_subtitle || "Découvrez nos produits professionnels",
-          primary_color: designRes.data.primary_color || "#4f46e5",
-          layout_style: designRes.data.layout_style || "grid"
-        });
-      }
+
+      setDesign({
+        banner_url: designRes.data?.banner_url || settingsData.hero_image_url || "",
+        welcome_title: designRes.data?.welcome_title || `Boutique - ${settingsData.name}`,
+        welcome_subtitle: designRes.data?.welcome_subtitle || settingsData.description || "Découvrez nos produits de soins professionnels",
+        primary_color: designRes.data?.primary_color || settingsData.color_palette || "#2563EB",
+        layout_style: designRes.data?.layout_style || "grid"
+      });
 
       setLoading(false);
     }
@@ -124,7 +153,7 @@ function StoreContent() {
   // Fonction pour rechercher et suivre une commande
   async function handleTrackOrder(e: React.FormEvent) {
     e.preventDefault();
-    if (!trackingCode.trim() || !business) return;
+    if (!trackingCode.trim() || !settings) return;
     setTrackingLoading(true);
     setTrackingError(null);
     setTrackedOrder(null);
@@ -132,7 +161,7 @@ function StoreContent() {
     const { data, error } = await supabase
       .from("store_sales")
       .select("*")
-      .eq("business_id", business.id)
+      .eq("business_id", settings.business_id)
       .eq("pickup_code", trackingCode.trim().toUpperCase())
       .single();
 
@@ -144,16 +173,16 @@ function StoreContent() {
     }
   }
 
-  // Fonction pour annuler sa commande (uniquement si en statut 'pending')
+  // Fonction pour annuler sa commande
   async function handleClientCancelOrder(orderId: string) {
-    if (!business) return;
+    if (!settings) return;
     if (!confirm("Voulez-vous vraiment annuler cette commande ?")) return;
 
     const { error } = await supabase
       .from("store_sales")
       .update({ status: "canceled" })
       .eq("id", orderId)
-      .eq("business_id", business.id);
+      .eq("business_id", settings.business_id);
 
     if (error) {
       alert("Erreur lors de l'annulation : " + error.message);
@@ -163,10 +192,8 @@ function StoreContent() {
     }
   }
 
-  // Extraire les catégories uniques pour les filtres
   const categories = ["Tous", ...Array.from(new Set(products.map((p) => p.category || "Général")))];
 
-  // Produits filtrés
   const filteredProducts = products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -174,7 +201,6 @@ function StoreContent() {
     return matchesSearch && matchesCategory;
   });
 
-  // Gestion du Panier
   const addToCart = (product: StoreProduct) => {
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.id === product.id);
@@ -212,10 +238,9 @@ function StoreContent() {
   const totalCartAmount = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
   const totalCartItemsCount = cart.reduce((acc, curr) => acc + curr.quantity, 0);
 
-  // Validation de la commande (Click & Collect en attente)
   async function handleCheckout(e: React.FormEvent) {
     e.preventDefault();
-    if (cart.length === 0 || !business) return;
+    if (cart.length === 0 || !settings) return;
     setSubmitting(true);
     setErrorMessage(null);
 
@@ -232,7 +257,7 @@ function StoreContent() {
 
       const { error: saleError } = await supabase.from("store_sales").insert([
         {
-          business_id: business.id, // 🔒 Isolation garantie
+          business_id: settings.business_id,
           invoice_number: invoiceNumber,
           pickup_code: pickupCode,
           client_name: clientName,
@@ -257,32 +282,75 @@ function StoreContent() {
   }
 
   if (loading) {
-    return <div className="flex justify-center items-center min-h-screen text-xs text-slate-400 font-medium">Chargement de la boutique...</div>;
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-pulse flex items-center gap-2 text-slate-500 text-xs font-semibold">
+          <div className="w-4 h-4 rounded-full bg-blue-600 animate-bounce" /> Chargement de la boutique...
+        </div>
+      </div>
+    );
   }
 
-  if (!business) {
-    return <div className="min-h-screen flex items-center justify-center text-slate-800 font-bold">Boutique introuvable.</div>;
+  if (!settings) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-800 font-bold text-sm">
+        Boutique introuvable. Veuillez vérifier l'adresse URL.
+      </div>
+    );
   }
+
+  // Couleur principale unifiée lue depuis business_settings (ou design store)
+  const primaryColor = design.primary_color || settings.color_palette || '#2563EB';
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 pb-20 font-sans">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-20">
       
-      {/* En-tête / Bannière Luxe */}
-      <div className="relative bg-slate-900 text-white overflow-hidden shadow-md">
-        {design.banner_url ? (
-          <div className="absolute inset-0 opacity-45">
-            <img src={design.banner_url} alt="Bannière Store" className="w-full h-full object-cover" />
+      {/* =====================================================================
+          HERO HEADER (Harmonisé avec book/[slug])
+      ====================================================================== */}
+      <div className="relative min-h-[320px] sm:min-h-[360px] flex items-end justify-start px-6 sm:px-12 pb-20 overflow-hidden border-b border-white/10" style={{ backgroundColor: primaryColor }}>
+        {settings.hero_image_url ? (
+          <div className="absolute inset-0 z-0">
+            <img src={settings.hero_image_url} alt={settings.name} className="w-full h-full object-cover scale-105 filter brightness-75" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
           </div>
         ) : (
-          <div className="absolute inset-0 opacity-20 bg-gradient-to-r from-indigo-500 to-purple-600" />
+          <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-900 via-slate-950 to-black" />
         )}
-        
-        <div className="relative max-w-6xl mx-auto px-6 py-24 flex flex-col items-center text-center space-y-4">
-          <span className="bg-white/10 backdrop-blur-md text-white px-3.5 py-1.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 border border-white/20 shadow-sm">
-            <Store size={12} /> {business.name} - Click & Collect
-          </span>
-          <h1 className="text-3xl md:text-5xl font-black tracking-tight">{design.welcome_title}</h1>
-          <p className="text-xs md:text-sm text-slate-200 max-w-xl font-medium leading-relaxed">{design.welcome_subtitle}</p>
+
+        <div className="relative z-10 max-w-3xl w-full flex flex-col md:flex-row items-start md:items-end justify-between gap-6">
+          <div className="flex items-start gap-5">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center shadow-2xl overflow-hidden shrink-0">
+              {settings.store_image ? (
+                <img src={settings.store_image} alt={settings.name} className="w-full h-full object-cover" />
+              ) : (
+                <Scissors size={36} className="text-white/90" />
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 bg-white/20 border border-white/30 text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur-md">
+                <Sparkles size={11} /> Boutique Officielle
+              </div>
+              <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white">{settings.name}</h1>
+              <p className="text-xs sm:text-sm text-white/90 max-w-xl font-normal leading-relaxed">
+                {design.welcome_subtitle || settings.description || "Retrouvez tous nos produits professionnels de soin et de beauté."}
+              </p>
+
+              <div className="flex items-center gap-3 text-xs text-white/95 font-medium pt-1 flex-wrap">
+                {settings.location && (
+                  <span className="flex items-center gap-1.5 bg-white/15 px-3.5 py-1.5 rounded-xl backdrop-blur-md border border-white/20">
+                    <MapPin size={13} className="text-white" /> {settings.location}
+                  </span>
+                )}
+                {settings.whatsapp_number && (
+                  <a href={`https://wa.me/${settings.whatsapp_number}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 px-3.5 py-1.5 rounded-xl backdrop-blur-md transition border border-white/20">
+                    <Phone size={13} className="text-white" /> {settings.whatsapp_number}
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -291,23 +359,24 @@ function StoreContent() {
         
         {/* Barre de Recherche et Filtres par Catégorie */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-2xs">
-          <div className="relative w-full md:w-80">
+          <div className="relative w-full md:w-70">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Rechercher un produit..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
+         
 
           <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
             {categories.map((cat, idx) => (
               <button
                 key={idx}
                 onClick={() => setSelectedCategory(cat)}
-                style={selectedCategory === cat ? { backgroundColor: design.primary_color } : {}}
+                style={selectedCategory === cat ? { backgroundColor: primaryColor } : {}}
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                   selectedCategory === cat
                     ? "text-white shadow-xs"
@@ -318,23 +387,21 @@ function StoreContent() {
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Bouton toggle de suivi ou annulation de commande */}
-        <div className="max-w-xl mx-auto">
+           <div className="relative w-70 md:w-80"> 
+            <div className="max-w-xl mx-auto">
           {!showTrackingInput ? (
             <button
               onClick={() => setShowTrackingInput(true)}
-              style={{ borderColor: design.primary_color, color: design.primary_color }}
-              className="w-full bg-white border-2 border-dashed py-3.5 px-6 rounded-3xl text-xs font-bold hover:bg-indigo-50/50 transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+              style={{ borderColor: primaryColor, color: primaryColor }}
+              className="w-full bg-white border-2 border-dashed py-3.5 px-6 rounded-3xl text-xs font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
             >
-              <Ticket size={16} /> Suivre ou annuler une commande existante
+              <Ticket size={16} /> Suivre votre commande existante
             </button>
           ) : (
             <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-2xs space-y-4 animate-in fade-in duration-200">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                  <Ticket size={16} className="text-indigo-600" /> Suivre ou annuler ma commande
+                  <Ticket size={16} style={{ color: primaryColor }} /> Suivre ou annuler ma commande
                 </h3>
                 <button 
                   onClick={() => {
@@ -361,7 +428,7 @@ function StoreContent() {
                 <button
                   type="submit"
                   disabled={trackingLoading}
-                  style={{ backgroundColor: design.primary_color }}
+                  style={{ backgroundColor: primaryColor }}
                   className="text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition disabled:opacity-50 cursor-pointer"
                 >
                   {trackingLoading ? "Recherche..." : "Vérifier"}
@@ -397,12 +464,17 @@ function StoreContent() {
             </div>
           )}
         </div>
+          </div>
+        </div>
 
-        {/* Bouton Panier Flottant */}
+        {/* Suivi de commande */}
+       
+
+        {/* Panier Flottant */}
         <div className="sticky top-14 z-40 max-w-6xl mx-auto flex justify-end">
           <button
             onClick={() => setIsCartOpen(true)}
-            style={{ backgroundColor: design.primary_color }}
+            style={{ backgroundColor: primaryColor }}
             className="text-white px-5 py-3 rounded-2xl shadow-xl font-bold text-xs flex items-center gap-2 hover:opacity-95 transition hover:scale-105 cursor-pointer"
           >
             <ShoppingCart size={16} /> Panier ({totalCartItemsCount})
@@ -440,7 +512,7 @@ function StoreContent() {
                   )}
 
                   <div className="p-5 space-y-2">
-                    <span className="bg-indigo-50 text-indigo-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                    <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
                       {prod.category || "Général"}
                     </span>
                     <h3 className="font-bold text-sm text-slate-900">{prod.name}</h3>
@@ -456,7 +528,7 @@ function StoreContent() {
 
                   <button
                     onClick={() => addToCart(prod)}
-                    style={{ backgroundColor: design.primary_color }}
+                    style={{ backgroundColor: primaryColor }}
                     className="text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
                   >
                     Ajouter <Plus size={14} />
@@ -484,8 +556,8 @@ function StoreContent() {
               </div>
 
               {orderSuccess ? (
-                <div className="bg-indigo-50 border border-indigo-100 rounded-3xl p-6 text-center space-y-4 my-auto">
-                  <div className="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/20">
+                <div className="bg-blue-50 border border-blue-100 rounded-3xl p-6 text-center space-y-4 my-auto">
+                  <div className="w-16 h-16 text-white rounded-full flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20" style={{ backgroundColor: primaryColor }}>
                     <CheckCircle size={32} />
                   </div>
                   <h3 className="text-base font-black text-slate-900">Commande Réservée !</h3>
@@ -493,9 +565,9 @@ function StoreContent() {
                     Votre commande est mise en attente au salon. Voici votre code de retrait unique à présenter à l'accueil lors de votre paiement :
                   </p>
                   
-                  <div className="bg-white border-2 border-dashed border-indigo-300 p-4 rounded-2xl flex items-center justify-center gap-3 shadow-inner">
-                    <Ticket className="text-indigo-600" size={24} />
-                    <span className="text-2xl font-black text-indigo-700 tracking-wider font-mono">{generatedPickupCode}</span>
+                  <div className="bg-white border-2 border-dashed p-4 rounded-2xl flex items-center justify-center gap-3 shadow-inner" style={{ borderColor: `${primaryColor}66` }}>
+                    <Ticket size={24} style={{ color: primaryColor }} />
+                    <span className="text-2xl font-black tracking-wider font-mono" style={{ color: primaryColor }}>{generatedPickupCode}</span>
                   </div>
 
                   <p className="text-[11px] text-slate-500 italic">
@@ -507,7 +579,8 @@ function StoreContent() {
                       setOrderSuccess(false);
                       setIsCartOpen(false);
                     }}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl text-xs font-bold shadow-sm transition cursor-pointer"
+                    style={{ backgroundColor: primaryColor }}
+                    className="w-full text-white py-3 rounded-2xl text-xs font-bold shadow-sm transition cursor-pointer"
                   >
                     Terminer
                   </button>
@@ -522,7 +595,7 @@ function StoreContent() {
                         <div key={item.id} className="pt-4 first:pt-0 flex items-center justify-between gap-3">
                           <div className="space-y-0.5">
                             <h4 className="font-bold text-xs text-slate-900">{item.name}</h4>
-                            <span className="text-[11px] text-indigo-600 font-bold">{item.price} TND</span>
+                            <span className="text-[11px] font-bold" style={{ color: primaryColor }}>{item.price} TND</span>
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -576,13 +649,13 @@ function StoreContent() {
 
                 <div className="flex justify-between items-center py-2 text-xs font-bold text-slate-800">
                   <span>Total estimé :</span>
-                  <span className="text-base font-black text-indigo-600">{totalCartAmount.toFixed(2)} TND</span>
+                  <span className="text-base font-black" style={{ color: primaryColor }}>{totalCartAmount.toFixed(2)} TND</span>
                 </div>
 
                 <button
                   type="submit"
                   disabled={submitting}
-                  style={{ backgroundColor: design.primary_color }}
+                  style={{ backgroundColor: primaryColor }}
                   className="w-full text-white py-3.5 rounded-2xl text-xs font-bold shadow-md hover:opacity-95 transition disabled:opacity-50 cursor-pointer"
                 >
                   {submitting ? "Génération du code..." : "Réserver au Salon (Click & Collect)"}
@@ -594,13 +667,25 @@ function StoreContent() {
         </div>
       )}
 
+      {/* Minimal Footer */}
+      <footer className="mt-20 text-center text-xs text-slate-400 space-y-1">
+        <p className="font-bold text-slate-600">Propulsé par Booki<span style={{ color: primaryColor }}>.tn</span></p>
+        <p className="text-[11px]">Boutique en ligne et catalogue pour salons en Tunisie.</p>
+      </footer>
+
     </div>
   );
 }
 
 export default function PublicStorePage() {
   return (
-    <Suspense fallback={<div className="flex justify-center items-center min-h-screen text-xs text-slate-400 font-medium">Chargement...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-pulse flex items-center gap-2 text-slate-500 text-xs font-semibold">
+          <div className="w-4 h-4 rounded-full bg-blue-600 animate-bounce" /> Chargement de la boutique...
+        </div>
+      </div>
+    }>
       <StoreContent />
     </Suspense>
   );

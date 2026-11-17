@@ -61,7 +61,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const navItems = [
     { label: "Tableau de bord", href: "/admin/dashboard", icon: LayoutDashboard },
     { label: "Planning", href: "/admin/calendar", icon: Calendar },
-    { label: "Équipe & Salaires", href: "/admin/manage", icon: Users },
     { label: "Services & Inventaire", href: "/admin/services", icon: Package },
     { label: "Publicité & WhatsApp", href: "/admin/advertise", icon: Megaphone },
     { label: "Store", href: "/admin/store", icon: ShoppingBag },
@@ -74,7 +73,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
     if (pathname === "/admin" || pathname === "/admin/dashboard") return "Tableau de Bord";
     if (pathname.startsWith("/admin/calendar")) return "Planning & Réservations";
-    if (pathname.startsWith("/admin/manage") || pathname.startsWith("/admin/team")) return "Équipe & Salaires";
     if (pathname.startsWith("/admin/services")) return "Services & Inventaire";
     if (pathname.startsWith("/admin/store")) return "Store & E-commerce";
     if (pathname.startsWith("/admin/advertise")) return "Publicité & WhatsApp";
@@ -242,9 +240,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
             {/* Lien Paramètres rapide */}
             <Link
-              href={navItems[7].href}
+              href={navItems[6].href}
               className="w-10 h-10 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-600 transition"
-              title={navItems[7].label}
+              title={navItems[6].label}
             >
               <Settings size={18} />
             </Link>
