@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import {
   MessageSquare,
   CheckCircle2,
@@ -41,30 +42,26 @@ export default function WhatsAppAdminPage() {
   const supabase = createClient();
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [salonName, setSalonName] = useState("Notre Salon");
+  const [salonSlug, setSalonSlug] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // WhatsApp Config state
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [reminderEnabled, setReminderEnabled] = useState(false);
-  const [hoursBefore, setHoursBefore] = useState(24);
+  const [reminderEnabled, setReminderEnabled] = useState(true);
   const [template, setTemplate] = useState(
-    "Bonjour {{client_name}} 👋, rappel de votre RDV chez {{salon_name}} demain à {{time}} ({{service}})."
+    "Bonjour {{client_name}} 👋, rappel de votre RDV chez {{salon_name}} le {{time}} ({{service}})."
   );
 
-  // Campagne wa.me state & Filters
   const [allBookings, setAllBookings] = useState<ClientTarget[]>([]);
   const [filterMode, setFilterMode] = useState<"today" | "tomorrow" | "upcoming">("tomorrow");
   const [sentStatus, setSentStatus] = useState<Record<string, boolean>>({});
   const [loadingBookings, setLoadingBookings] = useState(false);
 
-  // Sales & Advertising Broadcast state
   const [promoTitle, setPromoTitle] = useState("🔥 Offre Spéciale Weekend !");
-  const [discount, setDiscount] = useState("-20% sur toutes les coupes");
+  const [discount, setDiscount] = useState("-20% sur nos prestations");
   const [validUntil, setValidUntil] = useState("ce dimanche");
   const [promoCopied, setPromoCopied] = useState(false);
 
-  // Promo Codes Management state
   const [promoList, setPromoList] = useState<PromoCode[]>([]);
   const [newCode, setNewCode] = useState("");
   const [newDiscountType, setNewDiscountType] = useState<"percent" | "fixed">("percent");
@@ -82,7 +79,10 @@ export default function WhatsAppAdminPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return setLoading(false);
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -90,37 +90,71 @@ export default function WhatsAppAdminPage() {
       .eq("id", user.id)
       .single();
 
-    if (!profile?.business_id) return setLoading(false);
+    if (!profile?.business_id) {
+      setLoading(false);
+      return;
+    }
+
     const bId = profile.business_id;
     setBusinessId(bId);
+
+    // Load persisted reminder status
+    try {
+      const saved = localStorage.getItem(`booki_reminders_${bId}`);
+      if (saved) setSentStatus(JSON.parse(saved));
+    } catch {
+      // ignore storage errors
+    }
 
     if (profile.businesses && (profile.businesses as any).name) {
       setSalonName((profile.businesses as any).name);
     }
 
-    const { data: config } = await supabase
-      .from("whatsapp_configs")
-      .select("*")
-      .eq("business_id", bId)
-      .maybeSingle();
+    const [configRes, settingsRes] = await Promise.all([
+      supabase
+        .from("whatsapp_configs")
+        .select("*")
+        .eq("business_id", bId)
+        .maybeSingle(),
+      supabase
+        .from("business_settings")
+        .select("slug, name")
+        .eq("business_id", bId)
+        .maybeSingle(),
+    ]);
 
-    if (config) {
-      setPhoneNumber(config.phone_number || "");
-      setReminderEnabled(config.reminder_enabled ?? false);
-      setHoursBefore(config.reminder_hours_before || 24);
-      if (config.message_template) setTemplate(config.message_template);
+    if (settingsRes.data?.slug) setSalonSlug(settingsRes.data.slug);
+    if (settingsRes.data?.name) setSalonName(settingsRes.data.name);
+
+    if (configRes.data) {
+      setPhoneNumber(configRes.data.phone_number || "");
+      setReminderEnabled(configRes.data.reminder_enabled ?? true);
+      if (configRes.data.message_template) {
+        setTemplate(configRes.data.message_template);
+      }
     }
 
     await Promise.all([fetchBookingsForCampaign(bId), fetchPromoCodes(bId)]);
     setLoading(false);
   }
 
+  function updateSentStatus(updater: (prev: Record<string, boolean>) => Record<string, boolean>) {
+    setSentStatus((prev) => {
+      const next = updater(prev);
+      if (businessId) {
+        try {
+          localStorage.setItem(`booki_reminders_${businessId}`, JSON.stringify(next));
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
+  }
+
   async function fetchBookingsForCampaign(bId: string) {
     setLoadingBookings(true);
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
-      now.getDate()
-    ).padStart(2, "0")}`;
+    const today = getLocalDateString(0);
 
     const { data, error } = await supabase
       .from("bookings")
@@ -131,11 +165,13 @@ export default function WhatsAppAdminPage() {
         client_whatsapp,
         booking_date,
         start_time,
+        status,
         services (name)
       `
       )
       .eq("business_id", bId)
       .gte("booking_date", today)
+      .neq("status", "canceled")
       .order("booking_date", { ascending: true })
       .order("start_time", { ascending: true })
       .limit(50);
@@ -166,13 +202,11 @@ export default function WhatsAppAdminPage() {
     }
   }
 
-  const getLocalDateString = (offsetDays = 0) => {
+  function getLocalDateString(offsetDays = 0) {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate()
-    ).padStart(2, "0")}`;
-  };
+    return d.toLocaleDateString("en-CA");
+  }
 
   const todayStr = getLocalDateString(0);
   const tomorrowStr = getLocalDateString(1);
@@ -185,6 +219,10 @@ export default function WhatsAppAdminPage() {
 
   function handleWaMeSend(client: ClientTarget) {
     const cleanPhone = client.phone.replace(/[^0-9]/g, "");
+    if (!cleanPhone) {
+      toast.error("Numéro WhatsApp invalide pour ce client.");
+      return;
+    }
 
     const personalizedText = template
       .replace(/\{\{client_name\}\}/g, client.name)
@@ -193,25 +231,29 @@ export default function WhatsAppAdminPage() {
       .replace(/\{\{service\}\}/g, client.service);
 
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(personalizedText)}`;
-
-    window.open(url, "_blank");
-    setSentStatus((prev) => ({ ...prev, [client.id]: true }));
+    window.open(url, "_blank", "noopener,noreferrer");
+    updateSentStatus((prev) => ({ ...prev, [client.id]: true }));
   }
 
   function handleMarkAllAsSent() {
-    const newStatus = { ...sentStatus };
-    filteredBookings.forEach((client) => {
-      newStatus[client.id] = true;
+    updateSentStatus((prev) => {
+      const next = { ...prev };
+      filteredBookings.forEach((client) => {
+        next[client.id] = true;
+      });
+      return next;
     });
-    setSentStatus(newStatus);
+    toast.success("Tous les clients de cette vue ont été marqués comme relancés.");
   }
 
   function handleResetStatus() {
-    const newStatus = { ...sentStatus };
-    filteredBookings.forEach((client) => {
-      delete newStatus[client.id];
+    updateSentStatus((prev) => {
+      const next = { ...prev };
+      filteredBookings.forEach((client) => {
+        delete next[client.id];
+      });
+      return next;
     });
-    setSentStatus(newStatus);
   }
 
   async function handleSaveConfig(e: React.FormEvent) {
@@ -222,10 +264,10 @@ export default function WhatsAppAdminPage() {
     const { error } = await supabase.from("whatsapp_configs").upsert(
       {
         business_id: businessId,
-        phone_number: phoneNumber,
+        phone_number: phoneNumber.trim(),
         provider: "wa.me",
         reminder_enabled: reminderEnabled,
-        reminder_hours_before: hoursBefore,
+        reminder_hours_before: 24,
         message_template: template,
         updated_at: new Date().toISOString(),
       },
@@ -234,15 +276,15 @@ export default function WhatsAppAdminPage() {
 
     setSaving(false);
     if (error) {
-      alert("Erreur de sauvegarde : " + error.message);
+      toast.error("Erreur de sauvegarde : " + error.message);
     } else {
-      alert("Modèle enregistré avec succès !");
+      toast.success("Modèle enregistré avec succès !");
     }
   }
 
   async function handleCreatePromo(e: React.FormEvent) {
     e.preventDefault();
-    if (!businessId || !newCode || !newDiscountValue) return;
+    if (!businessId || !newCode.trim() || !newDiscountValue) return;
     setCreatingPromo(true);
 
     const { error } = await supabase.from("promo_codes").insert([
@@ -250,17 +292,18 @@ export default function WhatsAppAdminPage() {
         business_id: businessId,
         code: newCode.trim().toUpperCase(),
         discount_type: newDiscountType,
-        discount_value: parseFloat(newDiscountValue),
-        min_purchase: newMinPurchase ? parseFloat(newMinPurchase) : 0,
-        expires_at: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
+        discount_value: Math.max(0, parseFloat(newDiscountValue) || 0),
+        min_purchase: newMinPurchase ? Math.max(0, parseFloat(newMinPurchase)) : 0,
+        expires_at: newExpiresAt ? new Date(`${newExpiresAt}T23:59:59`).toISOString() : null,
         is_active: true,
       },
     ]);
 
     setCreatingPromo(false);
     if (error) {
-      alert("Erreur lors de la création du code : " + error.message);
+      toast.error("Erreur lors de la création du code : " + error.message);
     } else {
+      toast.success("Code promo créé !");
       setNewCode("");
       setNewDiscountValue("");
       setNewMinPurchase("");
@@ -270,9 +313,17 @@ export default function WhatsAppAdminPage() {
   }
 
   async function handleDeletePromo(id: string) {
-    if (!confirm("Voulez-vous vraiment supprimer ce code promo ?")) return;
-    const { error } = await supabase.from("promo_codes").delete().eq("id", id);
-    if (!error && businessId) {
+    if (!businessId || !confirm("Voulez-vous vraiment supprimer ce code promo ?")) return;
+    const { error } = await supabase
+      .from("promo_codes")
+      .delete()
+      .eq("id", id)
+      .eq("business_id", businessId);
+
+    if (error) {
+      toast.error("Erreur : " + error.message);
+    } else {
+      toast.success("Code promo supprimé.");
       fetchPromoCodes(businessId);
     }
   }
@@ -282,25 +333,43 @@ export default function WhatsAppAdminPage() {
     const { error } = await supabase
       .from("promo_codes")
       .update({ is_active: !promo.is_active })
-      .eq("id", promo.id);
+      .eq("id", promo.id)
+      .eq("business_id", businessId);
 
-    if (!error) {
+    if (error) {
+      toast.error("Erreur : " + error.message);
+    } else {
       fetchPromoCodes(businessId);
     }
   }
 
-  const broadcastMessage = `✨ *${salonName}* ✨\n\n${promoTitle}\n\n💇‍♂️ Profitez de *${discount}* pour toute réservation effectuée ${validUntil}.\n\n📅 Réservez vite votre créneau directement ici ou contactez-nous par message !\n\nAu plaisir de vous recevoir ! 🌟`;
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://booki-opal.vercel.app";
+  const bookingUrl = salonSlug ? `${origin}/book/${salonSlug}` : "";
+  const storeUrl = salonSlug ? `${origin}/store/${salonSlug}` : "";
+
+  const broadcastMessage = `✨ *${salonName}* ✨\n\n${promoTitle}\n\nProfitez de *${discount}* ${validUntil}.\n${
+    bookingUrl ? `\n📅 Réservez en ligne 24h/24 :\n${bookingUrl}` : ""
+  }${storeUrl ? `\n🛍️ Notre boutique :\n${storeUrl}` : ""}\n\nAu plaisir de vous recevoir ! 🌟`;
 
   function handleCopyBroadcast() {
     navigator.clipboard.writeText(broadcastMessage);
     setPromoCopied(true);
+    toast.success("Annonce copiée !");
     setTimeout(() => setPromoCopied(false), 3000);
+  }
+
+  function handleShareBroadcastOnWhatsApp() {
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(broadcastMessage)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
   }
 
   if (loading) {
     return (
       <div className="p-12 text-center text-xs text-slate-400 font-medium">
-        Chargement de l'espace WhatsApp & Marketing...
+        Chargement de l&apos;espace Marketing & Rappels...
       </div>
     );
   }
@@ -310,27 +379,15 @@ export default function WhatsAppAdminPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2.5">
-            <MessageSquare className="text-emerald-600" size={24} /> Gestion WhatsApp & Marketing
+            <MessageSquare className="text-emerald-600" size={24} /> Publicité, Promos & Rappels
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Gérez vos rappels, diffusez vos offres et pilotez vos codes promo en un seul endroit.
+            Partagez vos offres manuellement sur WhatsApp, gérez vos codes promo et relancez vos clients en 1 clic.
           </p>
         </div>
-
-        <label className="flex items-center gap-3 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 cursor-pointer shadow-2xs">
-          <span className="text-xs font-bold text-slate-700">
-            {reminderEnabled ? "Rappels Actifs" : "Rappels Inactifs"}
-          </span>
-          <input
-            type="checkbox"
-            checked={reminderEnabled}
-            onChange={(e) => setReminderEnabled(e.target.checked)}
-            className="w-4 h-4 accent-emerald-600 cursor-pointer"
-          />
-        </label>
       </div>
 
-      {/* SECTION 1 : Modèle WhatsApp */}
+      {/* SECTION 1 : Modèle de Rappel WhatsApp */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <form
           onSubmit={handleSaveConfig}
@@ -338,11 +395,11 @@ export default function WhatsAppAdminPage() {
         >
           <div className="space-y-4">
             <h3 className="font-bold text-sm text-slate-900 border-b border-slate-100 pb-3">
-              1. Informations du Salon
+              1. Numéro & Modèle de Rappel (`wa.me`)
             </h3>
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                Numéro WhatsApp du Salon
+                Numéro WhatsApp de l&apos;établissement
               </label>
               <input
                 type="text"
@@ -352,15 +409,10 @@ export default function WhatsAppAdminPage() {
                 className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
               />
             </div>
-          </div>
 
-          <div className="space-y-4 pt-2">
-            <h3 className="font-bold text-sm text-slate-900 border-b border-slate-100 pb-3">
-              2. Modèle de Message de Rappel (`wa.me`)
-            </h3>
             <div>
               <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
-                <label className="text-[11px] font-bold text-slate-600">Votre texte</label>
+                <label className="text-[11px] font-bold text-slate-600">Message de rappel</label>
                 <span className="text-[10px] text-slate-400">
                   Variables : {"{{client_name}}"}, {"{{salon_name}}"}, {"{{time}}"}, {"{{service}}"}
                 </span>
@@ -379,7 +431,7 @@ export default function WhatsAppAdminPage() {
             <button
               type="submit"
               disabled={saving}
-              className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-2xl text-xs font-bold transition shadow-sm cursor-pointer"
+              className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-2xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
             >
               {saving ? "Enregistrement..." : "Enregistrer le modèle"}
             </button>
@@ -396,26 +448,31 @@ export default function WhatsAppAdminPage() {
                 .replace(/\{\{client_name\}\}/g, "Sami")
                 .replace(/\{\{salon_name\}\}/g, salonName)
                 .replace(/\{\{time\}\}/g, `${tomorrowStr} à 15:30`)
-                .replace(/\{\{service\}\}/g, "Coupe & Barbe")}
+                .replace(/\{\{service\}\}/g, "Prestation VIP")}
             </div>
           </div>
         </div>
       </div>
 
-      {/* SECTION 2 : Gestion des Codes Promo */}
+      {/* SECTION 2 : Codes Promo */}
       <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs p-6 space-y-6">
         <div className="border-b border-slate-100 pb-4">
           <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-            <Tag className="text-emerald-600" size={20} /> Gestion des Codes Promo & Conditions
+            <Tag className="text-emerald-600" size={20} /> Gestion des Codes Promo
           </h3>
           <p className="text-xs text-slate-500 font-medium">
-            Définissez des montants minimums d'achat et des dates d'expiration pour vos codes de réduction.
+            Créez des réductions utilisables directement sur votre lien de réservation.
           </p>
         </div>
 
-        <form onSubmit={handleCreatePromo} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/85 items-end">
+        <form
+          onSubmit={handleCreatePromo}
+          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/85 items-end"
+        >
           <div>
-            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Code Promo</label>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+              Code Promo
+            </label>
             <input
               type="text"
               value={newCode}
@@ -427,7 +484,9 @@ export default function WhatsAppAdminPage() {
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Type & Valeur</label>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+              Type & Valeur
+            </label>
             <div className="flex gap-1">
               <select
                 value={newDiscountType}
@@ -440,6 +499,7 @@ export default function WhatsAppAdminPage() {
               <input
                 type="number"
                 step="0.01"
+                min="0.01"
                 value={newDiscountValue}
                 onChange={(e) => setNewDiscountValue(e.target.value)}
                 placeholder="Valeur"
@@ -450,19 +510,24 @@ export default function WhatsAppAdminPage() {
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Min. Achat (TND)</label>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+              Min. Achat (TND)
+            </label>
             <input
               type="number"
               step="0.01"
+              min="0"
               value={newMinPurchase}
               onChange={(e) => setNewMinPurchase(e.target.value)}
-              placeholder="ex: 30 (optionnel)"
+              placeholder="0 (optionnel)"
               className="w-full bg-white border border-slate-200 p-2.5 rounded-xl text-xs font-medium"
             />
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Expiration</label>
+            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+              Expiration
+            </label>
             <input
               type="date"
               value={newExpiresAt}
@@ -483,7 +548,9 @@ export default function WhatsAppAdminPage() {
         </form>
 
         <div className="space-y-3">
-          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Codes enregistrés ({promoList.length})</h4>
+          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+            Codes enregistrés ({promoList.length})
+          </h4>
           {promoList.length === 0 ? (
             <p className="text-xs text-slate-400 italic py-4 text-center bg-slate-50 rounded-2xl">
               Aucun code promo créé pour le moment.
@@ -496,20 +563,41 @@ export default function WhatsAppAdminPage() {
                   <div
                     key={promo.id}
                     className={`p-4 rounded-2xl border flex items-center justify-between transition ${
-                      promo.is_active && !isExpired ? "bg-white border-slate-200 shadow-2xs" : "bg-slate-100 border-slate-200 opacity-60"
+                      promo.is_active && !isExpired
+                        ? "bg-white border-slate-200 shadow-2xs"
+                        : "bg-slate-100 border-slate-200 opacity-60"
                     }`}
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-black text-xs text-slate-900 font-mono tracking-wider">{promo.code}</span>
-                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${isExpired ? "bg-rose-100 text-rose-800" : promo.is_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>
+                        <span className="font-black text-xs text-slate-900 font-mono tracking-wider">
+                          {promo.code}
+                        </span>
+                        <span
+                          className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
+                            isExpired
+                              ? "bg-rose-100 text-rose-800"
+                              : promo.is_active
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-slate-200 text-slate-600"
+                          }`}
+                        >
                           {isExpired ? "Expiré" : promo.is_active ? "Actif" : "Inactif"}
                         </span>
                       </div>
                       <p className="text-[11px] font-bold text-indigo-600">
-                        -{promo.discount_value}{promo.discount_type === "percent" ? "%" : " TND"}
-                        {Number(promo.min_purchase) > 0 && <span className="text-[10px] text-slate-400 font-normal block">Min: {promo.min_purchase} TND</span>}
-                        {promo.expires_at && <span className="text-[10px] text-slate-400 font-normal block">Expire: {new Date(promo.expires_at).toLocaleDateString('fr-FR')}</span>}
+                        -{promo.discount_value}
+                        {promo.discount_type === "percent" ? "%" : " TND"}
+                        {Number(promo.min_purchase) > 0 && (
+                          <span className="text-[10px] text-slate-400 font-normal block">
+                            Min: {promo.min_purchase} TND
+                          </span>
+                        )}
+                        {promo.expires_at && (
+                          <span className="text-[10px] text-slate-400 font-normal block">
+                            Expire: {new Date(promo.expires_at).toLocaleDateString("fr-FR")}
+                          </span>
+                        )}
                       </p>
                     </div>
 
@@ -538,15 +626,15 @@ export default function WhatsAppAdminPage() {
         </div>
       </div>
 
-      {/* SECTION 3 : Rappels Rendez-vous (wa.me) */}
+      {/* SECTION 3 : Rappels manuels wa.me */}
       <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs p-6 space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <Users className="text-emerald-600" size={20} /> Rappels Rendez-vous (`wa.me`)
+              <Users className="text-emerald-600" size={20} /> Rappels Rendez-vous (WhatsApp Direct)
             </h3>
             <p className="text-xs text-slate-500 font-medium">
-              Cliquez sur chaque client pour ouvrir WhatsApp avec son message personnalisé.
+              Cliquez sur un client pour ouvrir WhatsApp avec son message de rappel pré-rempli.
             </p>
           </div>
 
@@ -581,7 +669,7 @@ export default function WhatsAppAdminPage() {
                     : "text-slate-500 hover:text-slate-900"
                 }`}
               >
-                Aujourd'hui ({allBookings.filter((b) => b.date === todayStr).length})
+                Aujourd&apos;hui ({allBookings.filter((b) => b.date === todayStr).length})
               </button>
               <button
                 type="button"
@@ -613,7 +701,7 @@ export default function WhatsAppAdminPage() {
           <span>Clients affichés : {filteredBookings.length}</span>
           <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full text-[11px]">
             {filteredBookings.filter((b) => sentStatus[b.id]).length} / {filteredBookings.length}{" "}
-            relancés sur cette vue
+            relancés
           </span>
         </div>
 
@@ -629,7 +717,6 @@ export default function WhatsAppAdminPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[450px] overflow-y-auto pr-2">
             {filteredBookings.map((client) => {
               const isSent = sentStatus[client.id];
-
               return (
                 <div
                   key={client.id}
@@ -646,7 +733,7 @@ export default function WhatsAppAdminPage() {
                         {client.phone || "Numéro manquant"}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium">✂️ {client.service}</p>
+                    <p className="text-[11px] text-slate-500 font-medium">{client.service}</p>
                     <p className="text-[10px] text-indigo-600 font-bold flex items-center gap-1">
                       <Calendar size={11} /> {client.date} à {client.time}
                     </p>
@@ -679,14 +766,14 @@ export default function WhatsAppAdminPage() {
         )}
       </div>
 
-      {/* SECTION 4 : Diffusions Promo & Publicité */}
+      {/* SECTION 4 : Partage manuel de publicités */}
       <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs p-6 space-y-6">
         <div className="border-b border-slate-100 pb-4">
           <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-            <Megaphone className="text-emerald-600" size={20} /> Diffusions Promo & Publicité WhatsApp
+            <Megaphone className="text-emerald-600" size={20} /> Annonces & Partage Manuel WhatsApp
           </h3>
           <p className="text-xs text-slate-500 font-medium">
-            Générez une annonce promotionnelle prête à être collée dans vos groupes WhatsApp, statuts ou listes de diffusion.
+            Générez une pub incluant automatiquement vos liens Booking & Store, puis copiez ou partagez en statut / groupe WhatsApp.
           </p>
         </div>
 
@@ -694,7 +781,7 @@ export default function WhatsAppAdminPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                Titre de l'annonce
+                Titre de l&apos;annonce
               </label>
               <input
                 type="text"
@@ -706,7 +793,7 @@ export default function WhatsAppAdminPage() {
 
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                Détail de l'offre / Remise
+                Détail de l&apos;offre / Remise
               </label>
               <input
                 type="text"
@@ -718,7 +805,7 @@ export default function WhatsAppAdminPage() {
 
             <div>
               <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                Validité / Limite de temps
+                Validité / Période
               </label>
               <input
                 type="text"
@@ -731,27 +818,37 @@ export default function WhatsAppAdminPage() {
 
           <div className="space-y-4">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-              <Sparkles size={12} /> Aperçu du message publicitaire
+              <Sparkles size={12} /> Aperçu prêt à partager
             </span>
             <div className="bg-slate-900 text-emerald-300 p-4 rounded-2xl text-xs font-mono leading-relaxed whitespace-pre-wrap shadow-inner">
               {broadcastMessage}
             </div>
 
-            <button
-              type="button"
-              onClick={handleCopyBroadcast}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-            >
-              {promoCopied ? (
-                <>
-                  <CheckCircle2 size={16} /> Annonce copiée avec succès !
-                </>
-              ) : (
-                <>
-                  <Copy size={16} /> Copier l'annonce pour WhatsApp
-                </>
-              )}
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleCopyBroadcast}
+                className="bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {promoCopied ? (
+                  <>
+                    <CheckCircle2 size={15} /> Copié !
+                  </>
+                ) : (
+                  <>
+                    <Copy size={15} /> Copier le texte
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleShareBroadcastOnWhatsApp}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Send size={15} /> Partager sur WhatsApp
+              </button>
+            </div>
           </div>
         </div>
       </div>

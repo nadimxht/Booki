@@ -4,10 +4,18 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import NotificationListener, { AppNotification } from "../components/NotificationListener";
-import { 
-  LayoutDashboard, Calendar, Users, Package, Settings, 
-  LogOut, Scissors, Bell, ShoppingBag, CheckCircle2, Wallet,
-  Megaphone, Menu, X
+import {
+  LayoutDashboard,
+  Calendar,
+  Users,
+  Package,
+  Settings,
+  Bell,
+  ShoppingBag,
+  Wallet,
+  Megaphone,
+  Menu,
+  X,
 } from "lucide-react";
 import LogoutButton from "../components/Logout";
 
@@ -16,8 +24,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [mounted, setMounted] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
-  // Liste des notifications stockées en état
+
   const [notifications, setNotifications] = useState<AppNotification[]>([
     {
       id: "init-1",
@@ -25,14 +32,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       message: "Les nouvelles réservations et ventes s'afficheront ici.",
       type: "booking",
       time: "Aujourd'hui",
-      read: true
-    }
+      read: true,
+    },
   ]);
 
   useEffect(() => {
     setMounted(true);
 
-    // Écoute des évènements envoyés par NotificationListener
     const handleNewNotification = (event: Event) => {
       const customEvent = event as CustomEvent<AppNotification>;
       setNotifications((prev) => [customEvent.detail, ...prev]);
@@ -50,11 +56,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     const nextState = !notificationsOpen;
     setNotificationsOpen(nextState);
 
-    // Marquer toutes les notifications comme lues à l'ouverture
     if (nextState) {
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, read: true }))
-      );
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     }
   };
 
@@ -64,29 +67,25 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     { label: "Services & Inventaire", href: "/admin/services", icon: Package },
     { label: "Publicité & WhatsApp", href: "/admin/advertise", icon: Megaphone },
     { label: "Store", href: "/admin/store", icon: ShoppingBag },
-    { label: 'Dépenses & Rentabilité', href: '/admin/expenses', icon: Wallet },
+    { label: "Dépenses & Rentabilité", href: "/admin/expenses", icon: Wallet },
     { label: "Paramètres", href: "/admin/settings", icon: Settings },
   ];
 
   const getPageTitle = () => {
     if (!pathname) return "Administration";
-
     if (pathname === "/admin" || pathname === "/admin/dashboard") return "Tableau de Bord";
     if (pathname.startsWith("/admin/calendar")) return "Planning & Réservations";
+    if (pathname.startsWith("/admin/manage")) return "Équipe & Salaires";
     if (pathname.startsWith("/admin/services")) return "Services & Inventaire";
     if (pathname.startsWith("/admin/store")) return "Store & E-commerce";
     if (pathname.startsWith("/admin/advertise")) return "Publicité & WhatsApp";
-    if (pathname.startsWith("/admin/expenses")) return "Monthly expenses & Profitability";
-    if (pathname.startsWith("/admin/subscription")) return "Abonnement & Facturation SaaS";
+    if (pathname.startsWith("/admin/expenses")) return "Dépenses & Rentabilité";
     if (pathname.startsWith("/admin/settings")) return "Paramètres de l'Entreprise";
-
     return "Administration";
   };
 
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-800">
-      
-      {/* Écouteur en arrière-plan */}
       <NotificationListener />
 
       {/* Sidebar Desktop */}
@@ -114,27 +113,27 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 </Link>
               );
             })}
-            
+
             <LogoutButton />
           </nav>
         </div>
       </aside>
 
-      {/* Sidebar Mobile (Tiroir escamotable) */}
+      {/* Sidebar Mobile */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden">
-          {/* Overlay sombre */}
-          <div 
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs" 
+          <div
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs"
             onClick={() => setMobileMenuOpen(false)}
           />
-          
-          {/* Contenu du menu mobile */}
+
           <div className="relative w-72 bg-slate-900 text-white p-6 flex flex-col justify-between shadow-2xl z-10 animate-in slide-in-from-left duration-200">
             <div className="space-y-6">
               <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-                <span className="font-black text-lg tracking-tight text-white">Booki<span className="text-indigo-500">.tn</span></span>
-                <button 
+                <span className="font-black text-lg tracking-tight text-white">
+                  Booki<span className="text-indigo-500">.tn</span>
+                </span>
+                <button
                   onClick={() => setMobileMenuOpen(false)}
                   className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800"
                 >
@@ -173,11 +172,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </div>
       )}
 
-      {/* Zone Principale */}
+      {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-20 bg-white border-b border-slate-100 px-6 md:px-10 flex items-center justify-between sticky top-0 z-40">
           <div className="flex items-center gap-3">
-            {/* Bouton Hamburger Mobile */}
             <button
               onClick={() => setMobileMenuOpen(true)}
               className="md:hidden w-10 h-10 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-700 transition"
@@ -195,11 +193,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Cloche de Notification avec Dropdown interactif */}
             <div className="relative">
               <button
                 onClick={handleToggleDropdown}
-                className="w-10 h-10 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-600 transition relative"
+                className="w-10 h-10 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-600 transition relative cursor-pointer"
                 title="Notifications"
               >
                 <Bell size={18} />
@@ -238,20 +235,17 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               )}
             </div>
 
-            {/* Lien Paramètres rapide */}
             <Link
-              href={navItems[6].href}
+              href="/admin/settings"
               className="w-10 h-10 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-600 transition"
-              title={navItems[6].label}
+              title="Paramètres"
             >
               <Settings size={18} />
             </Link>
           </div>
         </header>
 
-        <main className="flex-1 p-6 md:p-10 max-w-7xl w-full mx-auto">
-          {children}
-        </main>
+        <main className="flex-1 p-6 md:p-10 max-w-7xl w-full mx-auto">{children}</main>
       </div>
     </div>
   );

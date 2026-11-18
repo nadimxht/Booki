@@ -48,10 +48,11 @@ export default function RegisterPage() {
       setLoading(false);
       return;
     }
-
-    toast.success("Salon créé avec succès ! Bienvenue sur Booki.");
-    router.refresh();
-    router.push('/admin/calendar');
+if (!authData.session) {
+  toast.success("Vérifiez votre boîte e-mail pour confirmer votre compte, puis connectez-vous.");
+  router.push('/login');
+  return;
+}
   };
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-slate-800">

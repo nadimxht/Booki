@@ -1,11 +1,21 @@
-'use client';
+"use client";
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import { Plus, Calendar as CalendarIcon, X } from "lucide-react";
 
-interface Employee { id: string; name: string; color: string; }
-interface Service { id: string; name: string; duration_minutes: number; price: number; }
+interface Employee {
+  id: string;
+  name: string;
+  color: string;
+}
+interface Service {
+  id: string;
+  name: string;
+  duration_minutes: number;
+  price: number;
+}
 interface Booking {
   id: string;
   client_name: string;
@@ -17,11 +27,28 @@ interface Booking {
   end_time: string;
   status: "still" | "ongoing" | "done" | "canceled";
   is_walk_in: boolean;
+  total_price?: number;
   services?: { name: string; duration_minutes: number; price: number };
   employees?: { name: string; color: string };
 }
 
-const HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
+const DEFAULT_HOURS = [
+  "09:00", "10:00", "11:00", "12:00", "13:00",
+  "14:00", "15:00", "16:00", "17:00", "18:00",
+];
+
+function buildHoursList(startStr?: string, endStr?: string): string[] {
+  const startH = parseInt((startStr || "09:00").split(":")[0], 10);
+  const endH = parseInt((endStr || "19:00").split(":")[0], 10);
+  if (Number.isNaN(startH) || Number.isNaN(endH) || startH >= endH) {
+    return DEFAULT_HOURS;
+  }
+  const list: string[] = [];
+  for (let h = startH; h < endH; h++) {
+    list.push(`${String(h).padStart(2, "0")}:00`);
+  }
+  return list.length > 0 ? list : DEFAULT_HOURS;
+}
 
 export default function AdminCalendarPage() {
   const supabase = createClient();
@@ -29,16 +56,16 @@ export default function AdminCalendarPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  
-  
-const [selectedDate, setSelectedDate] = useState(() => {
-  return new Date().toISOString().substring(0, 10);
-});
+  const [hours, setHours] = useState<string[]>(DEFAULT_HOURS);
+
+  const [selectedDate, setSelectedDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA")
+  );
   const [filterEmployee, setFilterEmployee] = useState<string>("all");
-  
+
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  
+
   const [isWalkInModalOpen, setIsWalkInModalOpen] = useState(false);
   const [newWalkIn, setNewWalkIn] = useState({
     client_name: "",
@@ -48,13 +75,10 @@ const [selectedDate, setSelectedDate] = useState(() => {
     start_time: "10:00",
   });
 
-  // 1. Récupérer le business_id de l'admin connecté au chargement
   useEffect(() => {
-    setSelectedDate(new Date().toISOString().split("T")[0]);
     initBusinessAndData();
   }, []);
 
-  // 2. Recharger les réservations si la date change
   useEffect(() => {
     if (selectedDate && businessId) {
       fetchBookings(businessId);
@@ -62,7 +86,9 @@ const [selectedDate, setSelectedDate] = useState(() => {
   }, [selectedDate, businessId]);
 
   async function initBusinessAndData() {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const { data: profile } = await supabase
@@ -76,14 +102,26 @@ const [selectedDate, setSelectedDate] = useState(() => {
     const bizId = profile.business_id;
     setBusinessId(bizId);
 
-    // Charger les employés et services spécifiques à ce salon
-    const [empRes, sRes] = await Promise.all([
+    const [empRes, sRes, settingsRes] = await Promise.all([
       supabase.from("employees").select("*").eq("business_id", bizId),
       supabase.from("services").select("*").eq("business_id", bizId),
+      supabase
+        .from("business_settings")
+        .select("working_hours")
+        .eq("business_id", bizId)
+        .maybeSingle(),
     ]);
 
     if (empRes.data) setEmployees(empRes.data);
     if (sRes.data) setServices(sRes.data);
+    if (settingsRes.data?.working_hours) {
+      setHours(
+        buildHoursList(
+          settingsRes.data.working_hours.start,
+          settingsRes.data.working_hours.end
+        )
+      );
+    }
 
     fetchBookings(bizId);
   }
@@ -97,18 +135,22 @@ const [selectedDate, setSelectedDate] = useState(() => {
 
     if (error) {
       console.error("Erreur chargement réservations:", error.message);
-    } else if (data) {
+      return;
+    }
+
+    if (data) {
       const fetchedBookings = data as Booking[];
       setBookings(fetchedBookings);
 
-      // Synchronisation automatique des statuts "done" si l'heure de fin est dépassée
       const now = new Date();
       let hasUpdates = false;
 
       for (const booking of fetchedBookings) {
         if (booking.status !== "done" && booking.status !== "canceled") {
           const [endH, endM] = booking.end_time.split(":").map(Number);
-          const endDateTime = new Date(`${booking.booking_date}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`);
+          const endDateTime = new Date(
+            `${booking.booking_date}T${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}:00`
+          );
 
           if (now > endDateTime) {
             const { error: updateErr } = await supabase
@@ -146,25 +188,29 @@ const [selectedDate, setSelectedDate] = useState(() => {
     const [startH, startM] = booking.start_time.split(":").map(Number);
     const [endH, endM] = booking.end_time.split(":").map(Number);
 
-    const startDateTime = new Date(`${booking.booking_date}T${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}:00`);
-    const endDateTime = new Date(`${booking.booking_date}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`);
+    const startDateTime = new Date(
+      `${booking.booking_date}T${String(startH).padStart(2, "0")}:${String(startM).padStart(2, "0")}:00`
+    );
+    const endDateTime = new Date(
+      `${booking.booking_date}T${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}:00`
+    );
 
-    if (now > endDateTime) {
-      return "done";
-    } else if (now >= startDateTime && now <= endDateTime) {
-      return "ongoing";
-    } else {
-      return "still";
-    }
+    if (now > endDateTime) return "done";
+    if (now >= startDateTime && now <= endDateTime) return "ongoing";
+    return "still";
   }
 
   async function handleCreateWalkIn(e: React.FormEvent) {
     e.preventDefault();
     if (!businessId) return;
 
-    const service = services.find(s => s.id === newWalkIn.service_id);
-    const duration = service ? service.duration_minutes : 30;
+    const service = services.find((s) => s.id === newWalkIn.service_id);
+    if (!service) {
+      toast.error("Veuillez sélectionner une prestation.");
+      return;
+    }
 
+    const duration = service.duration_minutes || 30;
     const [h, m] = newWalkIn.start_time.split(":").map(Number);
     const startMins = h * 60 + m;
     const endMins = startMins + duration;
@@ -172,50 +218,87 @@ const [selectedDate, setSelectedDate] = useState(() => {
     const endM = endMins % 60;
     const formattedEndTime = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
 
-    const { error } = await supabase.from("bookings").insert([{
-      business_id: businessId, // 🔒 Isolation garantie
-      client_name: newWalkIn.client_name,
-      client_whatsapp: newWalkIn.client_whatsapp || "N/A",
-      service_id: newWalkIn.service_id,
-      employee_id: newWalkIn.employee_id || null,
-      booking_date: selectedDate,
-      start_time: newWalkIn.start_time,
-      end_time: formattedEndTime,
-      status: "still",
-      is_walk_in: true
-    }]);
+    if (newWalkIn.employee_id) {
+      const conflict = bookings.some((b) => {
+        if (b.employee_id !== newWalkIn.employee_id || b.status === "canceled") {
+          return false;
+        }
+        const [bStartH, bStartM] = b.start_time.split(":").map(Number);
+        const [bEndH, bEndM] = b.end_time.split(":").map(Number);
+        const bStart = bStartH * 60 + bStartM;
+        const bEnd = bEndH * 60 + bEndM;
+        return startMins < bEnd && endMins > bStart;
+      });
+
+      if (conflict) {
+        toast.error("Ce collaborateur a déjà un rendez-vous sur ce créneau.");
+        return;
+      }
+    }
+
+    const { error } = await supabase.from("bookings").insert([
+      {
+        business_id: businessId,
+        client_name: newWalkIn.client_name.trim(),
+        client_whatsapp: newWalkIn.client_whatsapp.trim() || "N/A",
+        service_id: newWalkIn.service_id,
+        employee_id: newWalkIn.employee_id || null,
+        booking_date: selectedDate,
+        start_time: newWalkIn.start_time,
+        end_time: formattedEndTime,
+        status: "still",
+        is_walk_in: true,
+        total_price: Number(service.price) || 0,
+      },
+    ]);
 
     if (error) {
-      alert("Erreur : " + error.message);
+      toast.error("Erreur : " + error.message);
     } else {
+      toast.success("Walk-in enregistré !");
       setIsWalkInModalOpen(false);
-      setNewWalkIn({ client_name: "", client_whatsapp: "", service_id: "", employee_id: "", start_time: "10:00" });
+      setNewWalkIn({
+        client_name: "",
+        client_whatsapp: "",
+        service_id: "",
+        employee_id: "",
+        start_time: "10:00",
+      });
       fetchBookings(businessId);
     }
   }
 
   async function updateStatusToCanceled(id: string) {
     if (!businessId) return;
-    await supabase.from("bookings").update({ status: "canceled" }).eq("id", id).eq("business_id", businessId);
+    const { error } = await supabase
+      .from("bookings")
+      .update({ status: "canceled" })
+      .eq("id", id)
+      .eq("business_id", businessId);
+
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    toast.success("Rendez-vous annulé.");
     setIsDetailModalOpen(false);
     fetchBookings(businessId);
   }
 
-  const displayedEmployees = filterEmployee === "all" 
-    ? employees 
-    : employees.filter(e => e.id === filterEmployee);
+  const displayedEmployees =
+    filterEmployee === "all"
+      ? employees
+      : employees.filter((e) => e.id === filterEmployee);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      
-      {/* Barre de Contrôle Supérieure */}
       <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
             <CalendarIcon size={18} />
           </div>
-          <input 
-            type="date" 
+          <input
+            type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
             className="border border-slate-200 bg-slate-50 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 focus:outline-none"
@@ -229,8 +312,10 @@ const [selectedDate, setSelectedDate] = useState(() => {
             className="border border-slate-200 bg-slate-50 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 focus:outline-none"
           >
             <option value="all">Tous les membres ({employees.length})</option>
-            {employees.map(emp => (
-              <option key={emp.id} value={emp.id}>{emp.name}</option>
+            {employees.map((emp) => (
+              <option key={emp.id} value={emp.id}>
+                {emp.name}
+              </option>
             ))}
           </select>
 
@@ -246,14 +331,29 @@ const [selectedDate, setSelectedDate] = useState(() => {
       {/* Grille Calendrier */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-2xs overflow-x-auto">
         <div className="min-w-[700px]">
-          <div className="grid border-b border-slate-100 bg-slate-50/70" style={{ gridTemplateColumns: `80px repeat(${displayedEmployees.length || 1}, minmax(0, 1fr))` }}>
-            <div className="p-3 text-center text-[10px] font-black text-slate-400 uppercase border-r border-slate-100">Heure</div>
+          <div
+            className="grid border-b border-slate-100 bg-slate-50/70"
+            style={{
+              gridTemplateColumns: `80px repeat(${displayedEmployees.length || 1}, minmax(0, 1fr))`,
+            }}
+          >
+            <div className="p-3 text-center text-[10px] font-black text-slate-400 uppercase border-r border-slate-100">
+              Heure
+            </div>
             {displayedEmployees.length === 0 ? (
-              <div className="p-3 text-center text-xs text-slate-400">Aucun employé disponible. Créez-en un !</div>
+              <div className="p-3 text-center text-xs text-slate-400">
+                Aucun membre d&apos;équipe disponible. Ajoutez-en dans Paramètres !
+              </div>
             ) : (
-              displayedEmployees.map(emp => (
-                <div key={emp.id} className="p-3 text-center border-r border-slate-100 flex items-center justify-center gap-2">
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: emp.color }} />
+              displayedEmployees.map((emp) => (
+                <div
+                  key={emp.id}
+                  className="p-3 text-center border-r border-slate-100 flex items-center justify-center gap-2"
+                >
+                  <span
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: emp.color }}
+                  />
                   <span className="font-bold text-xs text-slate-800">{emp.name}</span>
                 </div>
               ))
@@ -261,27 +361,39 @@ const [selectedDate, setSelectedDate] = useState(() => {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {HOURS.map(hour => (
-              <div key={hour} className="grid min-h-[70px]" style={{ gridTemplateColumns: `80px repeat(${displayedEmployees.length || 1}, minmax(0, 1fr))` }}>
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="grid min-h-[70px]"
+                style={{
+                  gridTemplateColumns: `80px repeat(${displayedEmployees.length || 1}, minmax(0, 1fr))`,
+                }}
+              >
                 <div className="p-2 text-center text-[11px] font-bold text-slate-400 border-r border-slate-100 flex items-start justify-center pt-3">
                   {hour}
                 </div>
 
-                {displayedEmployees.map(emp => {
-                  const hourBookings = bookings.filter(b => 
-                    b.employee_id === emp.id && b.start_time.startsWith(hour.substring(0, 2))
+                {displayedEmployees.map((emp) => {
+                  const hourBookings = bookings.filter(
+                    (b) =>
+                      b.employee_id === emp.id &&
+                      b.start_time.startsWith(hour.substring(0, 2))
                   );
 
                   return (
-                    <div 
-                      key={emp.id} 
+                    <div
+                      key={emp.id}
                       onClick={() => {
-                        setNewWalkIn({ ...newWalkIn, employee_id: emp.id, start_time: hour });
+                        setNewWalkIn({
+                          ...newWalkIn,
+                          employee_id: emp.id,
+                          start_time: hour,
+                        });
                         setIsWalkInModalOpen(true);
                       }}
                       className="border-r border-slate-100 p-1.5 relative hover:bg-slate-50/50 cursor-pointer transition flex flex-col gap-1.5"
                     >
-                      {hourBookings.map(booking => {
+                      {hourBookings.map((booking) => {
                         const currentStatus = getEffectiveStatus(booking);
                         return (
                           <div
@@ -295,19 +407,44 @@ const [selectedDate, setSelectedDate] = useState(() => {
                             style={{
                               borderLeftWidth: "5px",
                               borderLeftColor: emp.color,
-                              backgroundColor: currentStatus === 'done' ? '#f0fdf4' : currentStatus === 'canceled' ? '#fff1f2' : currentStatus === 'ongoing' ? '#eff6ff' : '#f8fafc'
+                              backgroundColor:
+                                currentStatus === "done"
+                                  ? "#f0fdf4"
+                                  : currentStatus === "canceled"
+                                  ? "#fff1f2"
+                                  : currentStatus === "ongoing"
+                                  ? "#eff6ff"
+                                  : "#f8fafc",
                             }}
                           >
                             <div className="flex justify-between items-center">
-                              <span className="font-bold text-xs text-slate-900 truncate">{booking.client_name}</span>
+                              <span className="font-bold text-xs text-slate-900 truncate">
+                                {booking.client_name}
+                              </span>
                               {booking.is_walk_in && (
-                                <span className="bg-amber-100 text-amber-700 text-[9px] font-black px-1.5 py-0.5 rounded-md">WI</span>
+                                <span className="bg-amber-100 text-amber-700 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                                  WI
+                                </span>
                               )}
                             </div>
-                            <p className="text-[10px] text-slate-500 truncate">{booking.services?.name || "Service"}</p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {booking.services?.name || "Service"}
+                            </p>
                             <div className="flex justify-between items-center mt-1 pt-1 border-t border-slate-200/50 text-[9px] text-slate-400 font-medium">
-                              <span>{booking.start_time} - {booking.end_time}</span>
-                              <span className={`uppercase font-bold ${currentStatus === 'done' ? 'text-emerald-600' : currentStatus === 'ongoing' ? 'text-blue-600' : currentStatus === 'canceled' ? 'text-rose-600' : 'text-slate-600'}`}>
+                              <span>
+                                {booking.start_time} - {booking.end_time}
+                              </span>
+                              <span
+                                className={`uppercase font-bold ${
+                                  currentStatus === "done"
+                                    ? "text-emerald-600"
+                                    : currentStatus === "ongoing"
+                                    ? "text-blue-600"
+                                    : currentStatus === "canceled"
+                                    ? "text-rose-600"
+                                    : "text-slate-600"
+                                }`}
+                              >
                                 {currentStatus}
                               </span>
                             </div>
@@ -323,84 +460,116 @@ const [selectedDate, setSelectedDate] = useState(() => {
         </div>
       </div>
 
-      {/* Modal d'Ajout Walk-in */}
+      {/* Modal Walk-in */}
       {isWalkInModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-black text-sm text-slate-900">Ajouter une Réservation / Walk-in</h3>
-              <button onClick={() => setIsWalkInModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <h3 className="font-black text-sm text-slate-900">
+                Ajouter une Réservation / Walk-in
+              </h3>
+              <button
+                onClick={() => setIsWalkInModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
                 <X size={18} />
               </button>
             </div>
 
             <form onSubmit={handleCreateWalkIn} className="space-y-3">
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">Nom du Client</label>
-                <input 
-                  type="text" 
-                  placeholder="ex: Mohamed Ali" 
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                  Nom du Client
+                </label>
+                <input
+                  type="text"
+                  placeholder="ex: Mohamed Ali"
                   value={newWalkIn.client_name}
-                  onChange={(e) => setNewWalkIn({ ...newWalkIn, client_name: e.target.value })}
+                  onChange={(e) =>
+                    setNewWalkIn({ ...newWalkIn, client_name: e.target.value })
+                  }
                   className="w-full border border-slate-200 p-2.5 rounded-xl text-xs bg-slate-50 focus:outline-none"
-                  required 
+                  required
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">Numéro WhatsApp</label>
-                <input 
-                  type="text" 
-                  placeholder="ex: +216 20 000 000" 
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                  Numéro WhatsApp
+                </label>
+                <input
+                  type="text"
+                  placeholder="ex: +216 20 000 000"
                   value={newWalkIn.client_whatsapp}
-                  onChange={(e) => setNewWalkIn({ ...newWalkIn, client_whatsapp: e.target.value })}
+                  onChange={(e) =>
+                    setNewWalkIn({ ...newWalkIn, client_whatsapp: e.target.value })
+                  }
                   className="w-full border border-slate-200 p-2.5 rounded-xl text-xs bg-slate-50 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-600 block mb-1">Service</label>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                  Prestation
+                </label>
                 <select
                   value={newWalkIn.service_id}
-                  onChange={(e) => setNewWalkIn({ ...newWalkIn, service_id: e.target.value })}
+                  onChange={(e) =>
+                    setNewWalkIn({ ...newWalkIn, service_id: e.target.value })
+                  }
                   className="w-full border border-slate-200 p-2.5 rounded-xl text-xs bg-slate-50 focus:outline-none"
                   required
                 >
-                  <option value="">Sélectionner un service</option>
-                  {services.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.duration_minutes} min - {s.price} TND)</option>
+                  <option value="">Sélectionner une prestation</option>
+                  {services.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.duration_minutes} min - {s.price} TND)
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Employé Assigné</label>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                    Praticien Assigné
+                  </label>
                   <select
                     value={newWalkIn.employee_id}
-                    onChange={(e) => setNewWalkIn({ ...newWalkIn, employee_id: e.target.value })}
+                    onChange={(e) =>
+                      setNewWalkIn({ ...newWalkIn, employee_id: e.target.value })
+                    }
                     className="w-full border border-slate-200 p-2.5 rounded-xl text-xs bg-slate-50 focus:outline-none"
                   >
                     <option value="">Aucun</option>
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name}
+                      </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">Heure de début</label>
-                  <input 
-                    type="time" 
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                    Heure de début
+                  </label>
+                  <input
+                    type="time"
                     value={newWalkIn.start_time}
-                    onChange={(e) => setNewWalkIn({ ...newWalkIn, start_time: e.target.value })}
+                    onChange={(e) =>
+                      setNewWalkIn({ ...newWalkIn, start_time: e.target.value })
+                    }
                     className="w-full border border-slate-200 p-2.5 rounded-xl text-xs bg-slate-50 focus:outline-none"
-                    required 
+                    required
                   />
                 </div>
               </div>
 
-              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md transition mt-2 cursor-pointer">
+              <button
+                type="submit"
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-md transition mt-2 cursor-pointer"
+              >
                 Enregistrer la réservation
               </button>
             </form>
@@ -408,23 +577,42 @@ const [selectedDate, setSelectedDate] = useState(() => {
         </div>
       )}
 
-      {/* Modal de Détails / Annulation Admin */}
+      {/* Modal Détails */}
       {isDetailModalOpen && selectedBooking && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-black text-sm text-slate-900">Détails du Rendez-vous</h3>
-              <button onClick={() => setIsDetailModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <h3 className="font-black text-sm text-slate-900">
+                Détails du Rendez-vous
+              </h3>
+              <button
+                onClick={() => setIsDetailModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
                 <X size={18} />
               </button>
             </div>
 
             <div className="space-y-2 text-xs text-slate-600 bg-slate-50 p-4 rounded-2xl">
-              <p><strong>Client :</strong> {selectedBooking.client_name}</p>
-              <p><strong>WhatsApp :</strong> {selectedBooking.client_whatsapp}</p>
-              <p><strong>Service :</strong> {selectedBooking.services?.name}</p>
-              <p><strong>Horaire :</strong> {selectedBooking.start_time} - {selectedBooking.end_time}</p>
-              <p><strong>Statut actuel :</strong> <span className="uppercase font-bold text-indigo-600">{getEffectiveStatus(selectedBooking)}</span></p>
+              <p>
+                <strong>Client :</strong> {selectedBooking.client_name}
+              </p>
+              <p>
+                <strong>WhatsApp :</strong> {selectedBooking.client_whatsapp}
+              </p>
+              <p>
+                <strong>Prestation :</strong> {selectedBooking.services?.name}
+              </p>
+              <p>
+                <strong>Horaire :</strong> {selectedBooking.start_time} -{" "}
+                {selectedBooking.end_time}
+              </p>
+              <p>
+                <strong>Statut actuel :</strong>{" "}
+                <span className="uppercase font-bold text-indigo-600">
+                  {getEffectiveStatus(selectedBooking)}
+                </span>
+              </p>
             </div>
 
             {selectedBooking.status !== "canceled" && (
@@ -438,7 +626,6 @@ const [selectedDate, setSelectedDate] = useState(() => {
           </div>
         </div>
       )}
-
     </div>
   );
 }
