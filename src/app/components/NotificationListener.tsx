@@ -15,32 +15,51 @@ export interface AppNotification {
 export default function NotificationListener() {
   const supabase = createClient();
   const [businessId, setBusinessId] = useState<string | null>(null);
+  const [reconnectTick, setReconnectTick] = useState(0);
 
-  // 1. Récupérer le business_id de l'admin connecté au chargement
   useEffect(() => {
     async function initBusiness() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) return;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("business_id")
-        .eq("id", user.id)
-        .single();
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("business_id")
+          .eq("id", user.id)
+          .single();
 
-      if (profile?.business_id) {
-        setBusinessId(profile.business_id);
+        if (profile?.business_id) {
+          setBusinessId(profile.business_id);
+        }
+      } catch {
+        // ignore if offline
       }
     }
 
     initBusiness();
+
+    const handleOnlineRestored = () => {
+      setReconnectTick((t) => t + 1);
+      initBusiness();
+    };
+
+    window.addEventListener("booki:online-restored", handleOnlineRestored);
+    return () => {
+      window.removeEventListener("booki:online-restored", handleOnlineRestored);
+    };
   }, [supabase]);
 
-  // 2. Initialiser les abonnements Realtime une fois le businessId connu
   useEffect(() => {
     if (!businessId) return;
 
-    const dispatchAppNotification = (title: string, message: string, type: "booking" | "sale" | "inventory") => {
+    const dispatchAppNotification = (
+      title: string,
+      message: string,
+      type: "booking" | "sale" | "inventory"
+    ) => {
       const newNotification: AppNotification = {
         id: Date.now().toString(),
         title,
@@ -50,20 +69,20 @@ export default function NotificationListener() {
         read: false,
       };
 
-      // Émission d'un événement personnalisé écouté par le Layout
-      window.dispatchEvent(new CustomEvent("booki:new-notification", { detail: newNotification }));
+      window.dispatchEvent(
+        new CustomEvent("booki:new-notification", { detail: newNotification })
+      );
     };
 
-    // Écouter les nouvelles réservations pour ce business_id 🔒
     const bookingChannel = supabase
-      .channel(`realtime-bookings-ui-${businessId}`)
+      .channel(`realtime-bookings-ui-${businessId}-${reconnectTick}`)
       .on(
         "postgres_changes",
-        { 
-          event: "INSERT", 
-          schema: "public", 
+        {
+          event: "INSERT",
+          schema: "public",
           table: "bookings",
-          filter: `business_id=eq.${businessId}`
+          filter: `business_id=eq.${businessId}`,
         },
         (payload) => {
           const b = payload.new;
@@ -76,16 +95,15 @@ export default function NotificationListener() {
       )
       .subscribe();
 
-    // Écouter les nouvelles ventes pour ce business_id 🔒
     const salesChannel = supabase
-      .channel(`realtime-sales-ui-${businessId}`)
+      .channel(`realtime-sales-ui-${businessId}-${reconnectTick}`)
       .on(
         "postgres_changes",
-        { 
-          event: "INSERT", 
-          schema: "public", 
+        {
+          event: "INSERT",
+          schema: "public",
           table: "store_sales",
-          filter: `business_id=eq.${businessId}`
+          filter: `business_id=eq.${businessId}`,
         },
         (payload) => {
           const s = payload.new;
@@ -98,16 +116,15 @@ export default function NotificationListener() {
       )
       .subscribe();
 
-    // Écouter les alertes de stock bas pour ce business_id 🔒
     const inventoryChannel = supabase
-      .channel(`realtime-inventory-ui-${businessId}`)
+      .channel(`realtime-inventory-ui-${businessId}-${reconnectTick}`)
       .on(
         "postgres_changes",
-        { 
-          event: "UPDATE", 
-          schema: "public", 
+        {
+          event: "UPDATE",
+          schema: "public",
           table: "inventory",
-          filter: `business_id=eq.${businessId}`
+          filter: `business_id=eq.${businessId}`,
         },
         (payload) => {
           const item = payload.new;
@@ -127,7 +144,7 @@ export default function NotificationListener() {
       supabase.removeChannel(salesChannel);
       supabase.removeChannel(inventoryChannel);
     };
-  }, [businessId, supabase]);
+  }, [businessId, reconnectTick, supabase]);
 
   return null;
 }

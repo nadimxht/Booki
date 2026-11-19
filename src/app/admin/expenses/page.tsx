@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import {
@@ -22,6 +22,7 @@ import {
   Target,
   CheckCircle2,
   Clock,
+  ArrowUpDown,
 } from "lucide-react";
 
 interface UnifiedExpense {
@@ -45,19 +46,57 @@ const CATEGORIES = [
 
 const RECURRING_CATEGORIES = ["Loyer", "Factures (Eau/Elec/Net)"];
 
+const EXPENSE_PRESETS = [
+  { label: "Loyer", title: "Loyer du local", category: "Loyer" },
+  { label: "Facture STEG", title: "Facture STEG (Électricité)", category: "Factures (Eau/Elec/Net)" },
+  { label: "Facture SONEDE", title: "Facture SONEDE (Eau)", category: "Factures (Eau/Elec/Net)" },
+  { label: "Internet / Fibre", title: "Abonnement Internet / Fibre", category: "Factures (Eau/Elec/Net)" },
+  { label: "Pub Sponsorisée", title: "Campagne Pub Instagram / Facebook", category: "Marketing & Pub" },
+];
+
+function getTunisTodayStr(): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Tunis",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const y = parts.find((p) => p.type === "year")?.value || "2026";
+  const m = parts.find((p) => p.type === "month")?.value || "01";
+  const d = parts.find((p) => p.type === "day")?.value || "01";
+  return `${y}-${m}-${d}`;
+}
+
+function getTunisMonthStr(): string {
+  return getTunisTodayStr().slice(0, 7);
+}
+
+function formatSafeDateFr(dateStr: string): string {
+  if (!dateStr) return "";
+  const clean = dateStr.split("T")[0];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+    return new Date(dateStr).toLocaleDateString("fr-FR");
+  }
+  const [y, m, d] = clean.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0)).toLocaleDateString("fr-FR", {
+    timeZone: "Africa/Tunis",
+  });
+}
+
 function getMonthBounds(monthStr: string) {
   const [y, m] = monthStr.split("-").map(Number);
   const startOfMonth = `${monthStr}-01`;
-  const lastDay = new Date(y, m, 0).getDate();
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const endOfMonth = `${monthStr}-${String(lastDay).padStart(2, "0")}`;
-  const nextMonthDate = new Date(y, m, 1);
-  const nextMonthStart = `${nextMonthDate.getFullYear()}-${String(
-    nextMonthDate.getMonth() + 1
+
+  const nextMonthDate = new Date(Date.UTC(y, m, 1));
+  const nextMonthStart = `${nextMonthDate.getUTCFullYear()}-${String(
+    nextMonthDate.getUTCMonth() + 1
   ).padStart(2, "0")}-01`;
 
-  const prevMonthDate = new Date(y, m - 2, 1);
-  const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(
-    prevMonthDate.getMonth() + 1
+  const prevMonthDate = new Date(Date.UTC(y, m - 2, 1));
+  const prevMonthStr = `${prevMonthDate.getUTCFullYear()}-${String(
+    prevMonthDate.getUTCMonth() + 1
   ).padStart(2, "0")}`;
 
   return { startOfMonth, endOfMonth, nextMonthStart, prevMonthStr };
@@ -66,6 +105,7 @@ function getMonthBounds(monthStr: string) {
 export default function ExpensesPage() {
   const supabase = createClient();
   const [businessId, setBusinessId] = useState<string | null>(null);
+  const [salonName, setSalonName] = useState("Mon Établissement");
   const [unifiedExpenses, setUnifiedExpenses] = useState<UnifiedExpense[]>([]);
 
   // Revenues
@@ -82,10 +122,12 @@ export default function ExpensesPage() {
     { id: string; name: string; salary: number }[]
   >([]);
 
-  const [selectedMonth, setSelectedMonth] = useState(() =>
-    new Date().toLocaleDateString("en-CA").slice(0, 7)
-  );
+  const [selectedMonth, setSelectedMonth] = useState(() => getTunisMonthStr());
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState("Tous");
+  const [selectedSourceFilter, setSelectedSourceFilter] = useState<
+    "all" | "manual" | "payroll" | "inventory"
+  >("all");
+  const [sortBy, setSortBy] = useState<"date" | "amount">("date");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [copyingRecurring, setCopyingRecurring] = useState(false);
@@ -96,9 +138,7 @@ export default function ExpensesPage() {
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
-  const [expenseDate, setExpenseDate] = useState(() =>
-    new Date().toLocaleDateString("en-CA")
-  );
+  const [expenseDate, setExpenseDate] = useState(() => getTunisTodayStr());
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -118,7 +158,7 @@ export default function ExpensesPage() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("business_id")
+      .select("business_id, businesses(name)")
       .eq("id", user.id)
       .single();
 
@@ -135,18 +175,23 @@ export default function ExpensesPage() {
     const prevBounds = getMonthBounds(prevMonthStr);
 
     const [
+      settingsRes,
       manualRes,
       employeesRes,
       salesRes,
       productsRes,
       restocksRes,
       bookingsRes,
-      // Previous month queries for comparison
       prevManualRes,
       prevRestocksRes,
       prevBookingsRes,
       prevSalesRes,
     ] = await Promise.all([
+      supabase
+        .from("business_settings")
+        .select("name")
+        .eq("business_id", bizId)
+        .maybeSingle(),
       supabase
         .from("expenses")
         .select("*")
@@ -181,7 +226,6 @@ export default function ExpensesPage() {
         .gte("booking_date", startOfMonth)
         .lte("booking_date", endOfMonth)
         .neq("status", "canceled"),
-      // Prev month
       supabase
         .from("expenses")
         .select("amount")
@@ -203,12 +247,18 @@ export default function ExpensesPage() {
         .neq("status", "canceled"),
       supabase
         .from("store_sales")
-        .select("total_amount")
+        .select("created_at, items, total_amount")
         .eq("business_id", bizId)
         .eq("status", "paid")
         .gte("created_at", prevBounds.startOfMonth)
         .lt("created_at", prevBounds.nextMonthStart),
     ]);
+
+    setSalonName(
+      settingsRes.data?.name ||
+        (profile.businesses && (profile.businesses as any).name) ||
+        "Mon Établissement"
+    );
 
     const allEmployees = employeesRes.data || [];
     const paidEmployees = allEmployees.filter(
@@ -299,7 +349,6 @@ export default function ExpensesPage() {
 
     list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Current month booking revenues (realized vs upcoming)
     let realizedBookings = 0;
     let upcomingBookings = 0;
     (bookingsRes.data || []).forEach((b: any) => {
@@ -315,7 +364,6 @@ export default function ExpensesPage() {
       }
     });
 
-    // Previous month totals
     const prevManualTotal = (prevManualRes.data || []).reduce(
       (s: number, e: any) => s + (Number(e.amount) || 0),
       0
@@ -331,6 +379,18 @@ export default function ExpensesPage() {
       )
       .reduce((s: number, emp: any) => s + (Number(emp.salary) || 0), 0);
 
+    let prevInventoryCogs = 0;
+    let prevStoreRev = 0;
+    (prevSalesRes.data || []).forEach((sale: any) => {
+      prevStoreRev += Number(sale.total_amount) || 0;
+      if (Array.isArray(sale.items)) {
+        sale.items.forEach((item: any) => {
+          const cost = productCostMap.get(item.product_id) || 0;
+          prevInventoryCogs += cost * (Number(item.quantity) || 1);
+        });
+      }
+    });
+
     const prevBookingsRev = (prevBookingsRes.data || []).reduce(
       (s: number, b: any) => {
         const st = (b.status || "").toLowerCase();
@@ -345,17 +405,15 @@ export default function ExpensesPage() {
       },
       0
     );
-    const prevStoreRev = (prevSalesRes.data || []).reduce(
-      (s: number, sale: any) => s + (Number(sale.total_amount) || 0),
-      0
-    );
 
     setUnifiedExpenses(list);
     setBookingsRevenue(realizedBookings);
     setStoreRevenue(currentStoreRev);
     setUpcomingBookingsRevenue(upcomingBookings);
     setPrevMonthRevenue(prevBookingsRev + prevStoreRev);
-    setPrevMonthExpenses(prevManualTotal + prevRestockTotal + prevPaidPayroll);
+    setPrevMonthExpenses(
+      prevManualTotal + prevRestockTotal + prevPaidPayroll + prevInventoryCogs
+    );
     setLoading(false);
   }
 
@@ -364,7 +422,7 @@ export default function ExpensesPage() {
     setTitle("");
     setAmount("");
     setCategory(CATEGORIES[0]);
-    const todayLocal = new Date().toLocaleDateString("en-CA");
+    const todayLocal = getTunisTodayStr();
     setExpenseDate(
       todayLocal.startsWith(selectedMonth) ? todayLocal : `${selectedMonth}-01`
     );
@@ -378,7 +436,7 @@ export default function ExpensesPage() {
     setTitle(exp.title);
     setAmount(exp.amount.toString());
     setCategory(exp.category);
-    setExpenseDate(exp.date);
+    setExpenseDate((exp.date || "").split("T")[0]);
     setNotes(exp.notes || "");
     setIsModalOpen(true);
   }
@@ -560,14 +618,12 @@ export default function ExpensesPage() {
   const projectedProfitAfterPayroll =
     netProfit + upcomingBookingsRevenue - unpaidSalariesTotal;
 
-  // Break-even calculations
   const breakEvenGap = Math.max(0, totalExpenses - monthlyRevenue);
   const breakEvenProgress =
     totalExpenses > 0
       ? Math.min(100, (monthlyRevenue / totalExpenses) * 100)
       : 100;
 
-  // Month-over-month deltas
   const calcDelta = (curr: number, prev: number) => {
     if (prev <= 0) return null;
     return ((curr - prev) / prev) * 100;
@@ -583,33 +639,100 @@ export default function ExpensesPage() {
     return { category: cat, total: totalCat, percentage };
   }).sort((a, b) => b.total - a.total);
 
-  const filteredExpenses = unifiedExpenses.filter((e) => {
-    const matchCat =
-      selectedCategoryFilter === "Tous" ||
-      e.category === selectedCategoryFilter;
+  const filteredExpenses = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const matchSearch =
-      !q ||
-      e.title.toLowerCase().includes(q) ||
-      (e.notes && e.notes.toLowerCase().includes(q));
-    return matchCat && matchSearch;
-  });
+    const list = unifiedExpenses.filter((e) => {
+      const matchCat =
+        selectedCategoryFilter === "Tous" ||
+        e.category === selectedCategoryFilter;
+      const matchSource =
+        selectedSourceFilter === "all" || e.source === selectedSourceFilter;
+      const matchSearch =
+        !q ||
+        e.title.toLowerCase().includes(q) ||
+        (e.notes && e.notes.toLowerCase().includes(q));
+      return matchCat && matchSource && matchSearch;
+    });
+
+    if (sortBy === "amount") {
+      return [...list].sort((a, b) => b.amount - a.amount);
+    }
+    return list;
+  }, [
+    unifiedExpenses,
+    selectedCategoryFilter,
+    selectedSourceFilter,
+    searchQuery,
+    sortBy,
+  ]);
+
+  const filteredTotal = useMemo(
+    () => filteredExpenses.reduce((sum, e) => sum + e.amount, 0),
+    [filteredExpenses]
+  );
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-xs text-slate-400 font-medium">
-        Calcul du bilan automatisé...
+      <div className="max-w-6xl mx-auto space-y-6 pb-12 animate-pulse">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-7 w-72 bg-slate-200 rounded-xl" />
+            <div className="h-3.5 w-96 bg-slate-200/70 rounded-lg" />
+          </div>
+          <div className="h-10 w-80 bg-slate-200 rounded-2xl" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white rounded-3xl p-6 border border-slate-100 h-32" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-white rounded-3xl border border-slate-100 h-64" />
+          <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 h-64" />
+        </div>
+        <div className="bg-white rounded-3xl border border-slate-100 h-72" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12 font-sans">
+    <div id="printable-report" className="max-w-6xl mx-auto space-y-6 pb-12 font-sans">
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #printable-report, #printable-report * { visibility: visible !important; }
+          #printable-report {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            padding: 16px !important;
+            background: #ffffff !important;
+          }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      {/* Print-Only Formal Header */}
+      <div className="hidden print:flex items-start justify-between border-b-2 border-slate-900 pb-4 mb-4">
+        <div>
+          <h1 className="text-xl font-black text-slate-900">
+            BILAN FINANCIER MENSUEL — {salonName}
+          </h1>
+          <p className="text-xs text-slate-600">Période : {selectedMonth}</p>
+        </div>
+        <div className="text-right text-xs text-slate-500">
+          <p>Généré le {formatSafeDateFr(getTunisTodayStr())}</p>
+          <p>Booki.tn</p>
+        </div>
+      </div>
+
       {/* En-tête & Actions */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="no-print flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900">
-            Bilan & Gestion Financière
+            Bilan &amp; Gestion Financière
           </h1>
           <p className="text-xs text-slate-500 font-medium">
             Suivi automatisé des charges, seuil de rentabilité, salaires et export comptable.
@@ -622,7 +745,7 @@ export default function ExpensesPage() {
             <input
               type="month"
               value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
+              onChange={(e) => setSelectedMonth(e.target.value || getTunisMonthStr())}
               className="bg-transparent focus:outline-none cursor-pointer font-bold text-slate-800"
             />
           </div>
@@ -676,7 +799,8 @@ export default function ExpensesPage() {
                 {unpaidSalariesTotal.toFixed(2)} TND)
               </p>
               <p className="text-amber-800">
-                En attente : {unpaidEmployees.map((e) => `${e.name} (${e.salary} TND)`).join(", ")}.
+                En attente :{" "}
+                {unpaidEmployees.map((e) => `${e.name} (${e.salary} TND)`).join(", ")}.
                 Bénéfice prévisionnel une fois payés (avec RDV à venir) :{" "}
                 <strong>{projectedProfitAfterPayroll.toFixed(2)} TND</strong>.
               </p>
@@ -705,11 +829,7 @@ export default function ExpensesPage() {
                   revDelta >= 0 ? "text-emerald-600" : "text-rose-600"
                 }`}
               >
-                {revDelta >= 0 ? (
-                  <ArrowUpRight size={13} />
-                ) : (
-                  <ArrowDownRight size={13} />
-                )}
+                {revDelta >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
                 {revDelta >= 0 ? "+" : ""}
                 {revDelta.toFixed(1)}% vs mois dernier
               </p>
@@ -725,9 +845,7 @@ export default function ExpensesPage() {
             -{totalExpenses.toFixed(2)} TND
           </h2>
           <div className="text-[11px] space-y-0.5">
-            <p className="text-slate-400">
-              {expenseRatio.toFixed(1)}% du CA absorbé
-            </p>
+            <p className="text-slate-400">{expenseRatio.toFixed(1)}% du CA absorbé</p>
             {expDelta !== null && (
               <p
                 className={`font-bold flex items-center gap-0.5 ${
@@ -790,9 +908,7 @@ export default function ExpensesPage() {
             <div className="flex justify-between text-xs font-bold">
               <span className="text-slate-600">Couverture des charges</span>
               <span
-                className={
-                  breakEvenGap === 0 ? "text-emerald-600" : "text-indigo-600"
-                }
+                className={breakEvenGap === 0 ? "text-emerald-600" : "text-indigo-600"}
               >
                 {breakEvenProgress.toFixed(0)}%
               </span>
@@ -826,18 +942,14 @@ export default function ExpensesPage() {
             <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
               <PieChart size={16} className="text-indigo-600" /> Répartition Analytique des Charges
             </h3>
-            <span className="text-xs text-slate-400 font-medium">
-              {selectedMonth}
-            </span>
+            <span className="text-xs text-slate-400 font-medium">{selectedMonth}</span>
           </div>
 
           <div className="space-y-3">
             {categoryBreakdown.map((item, idx) => (
               <div key={idx} className="space-y-1">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-700">
-                    {item.category}
-                  </span>
+                  <span className="font-bold text-slate-700">{item.category}</span>
                   <span className="font-black text-slate-900">
                     {item.total.toFixed(2)} TND{" "}
                     <span className="text-slate-400 font-normal">
@@ -857,52 +969,95 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* Tableau des dépenses avec recherche et filtres */}
+      {/* Tableau des dépenses avec recherche, filtres source/catégorie, tri & sous-total */}
       <div className="bg-white rounded-3xl border border-slate-100 shadow-2xs overflow-hidden p-6 space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <h3 className="font-bold text-sm text-slate-900">
-            Flux détaillé des charges ({filteredExpenses.length})
-          </h3>
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="font-bold text-sm text-slate-900">
+              Flux détaillé des charges ({filteredExpenses.length})
+            </h3>
+            <span className="bg-rose-50 text-rose-700 border border-rose-100 text-[11px] font-black px-3 py-1 rounded-full">
+              Total affiché : -{filteredTotal.toFixed(2)} TND
+            </span>
+          </div>
 
-          <div className="relative w-full lg:w-64">
-            <Search
-              size={14}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher une dépense..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none"
-            />
+          <div className="no-print flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSortBy((s) => (s === "date" ? "amount" : "date"))}
+              className="px-3 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer transition"
+            >
+              <ArrowUpDown size={13} />
+              {sortBy === "date" ? "Tri : Date" : "Tri : Montant"}
+            </button>
+
+            <div className="relative w-full sm:w-64">
+              <Search
+                size={14}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Rechercher une dépense..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none"
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          <button
-            onClick={() => setSelectedCategoryFilter("Tous")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-              selectedCategoryFilter === "Tous"
-                ? "bg-indigo-600 text-white shadow-xs"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            Tous
-          </button>
-          {CATEGORIES.map((cat, i) => (
+        {/* Filtres Source */}
+        <div className="no-print flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
             <button
-              key={i}
-              onClick={() => setSelectedCategoryFilter(cat)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                selectedCategoryFilter === cat
+              type="button"
+              onClick={() => setSelectedCategoryFilter("Tous")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                selectedCategoryFilter === "Tous"
                   ? "bg-indigo-600 text-white shadow-xs"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
-              {cat}
+              Tous
             </button>
-          ))}
+            {CATEGORIES.map((cat, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setSelectedCategoryFilter(cat)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  selectedCategoryFilter === cat
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
+            {[
+              { id: "all", label: "Toutes sources" },
+              { id: "manual", label: "Manuelles" },
+              { id: "payroll", label: "Salaires" },
+              { id: "inventory", label: "Inventaire" },
+            ].map((src) => (
+              <button
+                key={src.id}
+                type="button"
+                onClick={() => setSelectedSourceFilter(src.id as any)}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer whitespace-nowrap ${
+                  selectedSourceFilter === src.id
+                    ? "bg-white text-slate-900 shadow-2xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                {src.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {filteredExpenses.length === 0 ? (
@@ -916,11 +1071,9 @@ export default function ExpensesPage() {
                 key={exp.id}
                 className="py-4 flex items-center justify-between gap-4 hover:bg-slate-50/50 px-2 rounded-2xl transition"
               >
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="font-bold text-xs text-slate-900">
-                      {exp.title}
-                    </h4>
+                    <h4 className="font-bold text-xs text-slate-900">{exp.title}</h4>
                     <span className="bg-slate-100 text-slate-600 text-[9px] font-bold px-2 py-0.5 rounded-full">
                       {exp.category}
                     </span>
@@ -937,8 +1090,7 @@ export default function ExpensesPage() {
                     )}
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    Date : {new Date(exp.date).toLocaleDateString("fr-FR")}{" "}
-                    {exp.notes && `| ${exp.notes}`}
+                    Date : {formatSafeDateFr(exp.date)} {exp.notes && `| ${exp.notes}`}
                   </p>
                 </div>
 
@@ -947,8 +1099,9 @@ export default function ExpensesPage() {
                     -{exp.amount.toFixed(2)} TND
                   </span>
                   {exp.source === "manual" && (
-                    <>
+                    <div className="no-print flex items-center gap-1">
                       <button
+                        type="button"
                         onClick={() => openEditModal(exp)}
                         className="p-2 hover:bg-slate-100 text-slate-500 rounded-xl transition cursor-pointer"
                         title="Modifier"
@@ -956,13 +1109,14 @@ export default function ExpensesPage() {
                         <Edit size={14} />
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleDeleteExpense(exp)}
                         className="p-2 hover:bg-rose-50 text-rose-500 rounded-xl transition cursor-pointer"
                         title="Supprimer"
                       >
                         <Trash2 size={14} />
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
               </div>
@@ -973,8 +1127,8 @@ export default function ExpensesPage() {
 
       {/* Modal Ajout / Modification Dépense Manuelle */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl space-y-6">
+        <div className="no-print fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-xl space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <h2 className="font-bold text-base text-slate-900">
                 {editingExpenseId
@@ -982,6 +1136,7 @@ export default function ExpensesPage() {
                   : "Ajouter une charge (ex: Loyer)"}
               </h2>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
                 className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 cursor-pointer"
               >
@@ -989,17 +1144,40 @@ export default function ExpensesPage() {
               </button>
             </div>
 
+            {!editingExpenseId && (
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                  Raccourcis rapides
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {EXPENSE_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setTitle(preset.title);
+                        setCategory(preset.category);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 text-[10px] font-bold transition cursor-pointer"
+                    >
+                      + {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSaveExpense} className="space-y-4">
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Intitulé
+                  Intitulé *
                 </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="ex: Loyer du local, Facture STEG..."
-                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
+                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900"
                   required
                 />
               </div>
@@ -1007,7 +1185,7 @@ export default function ExpensesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                    Montant (TND)
+                    Montant (TND) *
                   </label>
                   <input
                     type="number"
@@ -1016,7 +1194,7 @@ export default function ExpensesPage() {
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="ex: 850.00"
-                    className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
+                    className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900"
                     required
                   />
                 </div>
@@ -1027,7 +1205,7 @@ export default function ExpensesPage() {
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium cursor-pointer"
+                    className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900 cursor-pointer"
                   >
                     {CATEGORIES.map((c) => (
                       <option key={c} value={c}>
@@ -1040,13 +1218,13 @@ export default function ExpensesPage() {
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                  Date
+                  Date *
                 </label>
                 <input
                   type="date"
                   value={expenseDate}
-                  onChange={(e) => setExpenseDate(e.target.value)}
-                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
+                  onChange={(e) => setExpenseDate(e.target.value || getTunisTodayStr())}
+                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900"
                   required
                 />
               </div>
@@ -1060,7 +1238,7 @@ export default function ExpensesPage() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="ex: Facture N°12345"
-                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium"
+                  className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900"
                 />
               </div>
 

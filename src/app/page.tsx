@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   Calendar,
   ShoppingCart,
@@ -10,53 +10,243 @@ import {
   Plus,
   X,
   Menu,
-  Users,
   Sparkles,
   TrendingUp,
-  Bell,
-  Package,
   Scissors,
-  ArrowUpRight,
-  Clock,
   CheckCircle2,
-  Search,
-  Filter
-} from 'lucide-react';
+  Monitor,
+  Tablet,
+  Smartphone,
+  Tag,
+  Ticket,
+  Wallet,
+  ArrowRight,
+  MapPin,
+  ShieldCheck,
+  Zap,
+  Star,
+} from "lucide-react";
+
+const PHOTOS = {
+  salon:
+    "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&q=80&w=1200",
+  barber:
+    "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&q=80&w=1200",
+  spa: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&q=80&w=1200",
+  beauty:
+    "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&q=80&w=800",
+  shampoo:
+    "https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&w=600&q=80",
+  serum:
+    "https://images.unsplash.com/photo-1526947425960-945c6e72858f?auto=format&fit=crop&w=600&q=80",
+};
+
+type PreviewTab = "planning" | "pos" | "finance" | "whatsapp";
+
+const DESKTOP_TAB_DATA: Record<
+  PreviewTab,
+  {
+    title: string;
+    subtitle: string;
+    cta: string;
+    kpis: { label: string; value: string; sub: string; tone: string }[];
+    rows: { col1: string; col2: string; col3: string; col4: string; badge: string }[];
+    highlightLabel: string;
+    highlightValue: string;
+    highlightSub: string;
+    progress: number;
+  }
+> = {
+  planning: {
+    title: "Agenda & Réservations",
+    subtitle: "Timeline multi-praticiens synchronisée • Tunis",
+    cta: "Nouveau Walk-in",
+    kpis: [
+      { label: "Aujourd'hui", value: "24 RDV", sub: "5 en cours", tone: "text-blue-600 bg-blue-50" },
+      { label: "Confirmés", value: "96% Remplis", sub: "Zéro oubli", tone: "text-emerald-600 bg-emerald-50" },
+      { label: "CA Prévu", value: "1,280 TND", sub: "Prestations", tone: "text-amber-600 bg-amber-50" },
+      { label: "Consommables", value: "Marge +78%", sub: "Coût déduit", tone: "text-indigo-600 bg-indigo-50" },
+    ],
+    rows: [
+      { col1: "Karim Mansouri", col2: "Coupe + Barbe VIP", col3: "Youssef", col4: "45 TND", badge: "En cours" },
+      { col1: "Amira Trabelsi", col2: "Balayage & Kératine", col3: "Sarra", col4: "180 TND", badge: "Confirmé" },
+      { col1: "Sami Ben Ali", col2: "Soin Visage Express", col3: "Mehdi", col4: "65 TND", badge: "Terminé" },
+    ],
+    highlightLabel: "Taux d'occupation",
+    highlightValue: "88%",
+    highlightSub: "Créneaux remplis automatiquement",
+    progress: 88,
+  },
+  pos: {
+    title: "Boutique Click & Collect & POS",
+    subtitle: "Ventes comptoir & retraits en salon",
+    cta: "Vente Comptoir",
+    kpis: [
+      { label: "Commandes Web", value: "14 Retraits", sub: "Codes BK-*", tone: "text-amber-600 bg-amber-50" },
+      { label: "Encaissé", value: "940 TND", sub: "Espèces & Carte", tone: "text-emerald-600 bg-emerald-50" },
+      { label: "Panier Moyen", value: "67 TND", sub: "+14% ce mois", tone: "text-blue-600 bg-blue-50" },
+      { label: "Alertes Stock", value: "2 Produits", sub: "Seuil ≤ 3", tone: "text-rose-600 bg-rose-50" },
+    ],
+    rows: [
+      { col1: "BK-8F2A9C", col2: "Shampoing Pro 500ml", col3: "Click & Collect", col4: "35 TND", badge: "Prêt" },
+      { col1: "POS-41D9E2", col2: "Sérum Éclat + Cire", col3: "Client Comptoir", col4: "72 TND", badge: "Payé" },
+      { col1: "BK-19C4B0", col2: "Huile Barbe Bio", col3: "Carte", col4: "45 TND", badge: "Payé" },
+    ],
+    highlightLabel: "Marge Boutique",
+    highlightValue: "+46%",
+    highlightSub: "Factures PDF & stock en direct",
+    progress: 76,
+  },
+  finance: {
+    title: "Dépenses & Rentabilité Nette",
+    subtitle: "Point mort, charges fixes & salaires",
+    cta: "Export CSV",
+    kpis: [
+      { label: "Recettes Mois", value: "11,450 TND", sub: "RDV + Store", tone: "text-emerald-600 bg-emerald-50" },
+      { label: "Charges", value: "-4,120 TND", sub: "Loyer & Achats", tone: "text-rose-600 bg-rose-50" },
+      { label: "Salaires", value: "4 / 4 Payés", sub: "Équipe réglée", tone: "text-indigo-600 bg-indigo-50" },
+      { label: "Bénéfice Net", value: "4,350 TND", sub: "Marge 38%", tone: "text-blue-600 bg-blue-50" },
+    ],
+    rows: [
+      { col1: "Loyer du Salon", col2: "Charge fixe", col3: "01/11/2026", col4: "-1,500 TND", badge: "Réglé" },
+      { col1: "Restock Kératine", col2: "Inventaire auto", col3: "12/11/2026", col4: "-620 TND", badge: "Stock" },
+      { col1: "Salaires Équipe", col2: "Paie mensuelle", col3: "05/11/2026", col4: "-2,000 TND", badge: "Payé" },
+    ],
+    highlightLabel: "Seuil de rentabilité",
+    highlightValue: "100%",
+    highlightSub: "Point mort couvert dès le 14",
+    progress: 100,
+  },
+  whatsapp: {
+    title: "Rappels WhatsApp & Codes Promo",
+    subtitle: "Relances 1-clic & campagnes ciblées",
+    cta: "Nouveau Code",
+    kpis: [
+      { label: "À relancer", value: "18 Clients", sub: "RDV de demain", tone: "text-emerald-600 bg-emerald-50" },
+      { label: "No-Shows", value: "-85%", sub: "Absences évitées", tone: "text-blue-600 bg-blue-50" },
+      { label: "Codes Actifs", value: "3 Promos", sub: "VIP20, WEEKEND", tone: "text-amber-600 bg-amber-50" },
+      { label: "Relancés", value: "16 / 18", sub: "Via wa.me", tone: "text-indigo-600 bg-indigo-50" },
+    ],
+    rows: [
+      { col1: "Nadia Gharbi", col2: "Brushing & Soin", col3: "Demain 10:00", col4: "+216 22...", badge: "Relancé" },
+      { col1: "Yassine Mejri", col2: "Coupe Dégradé", col3: "Demain 11:30", col4: "+216 98...", badge: "Relancé" },
+      { col1: "Meriem Khelil", col2: "Manucure Gel", col3: "Demain 14:00", col4: "+216 55...", badge: "À envoyer" },
+    ],
+    highlightLabel: "Taux de présence",
+    highlightValue: "96%",
+    highlightSub: "Rappels WhatsApp + E-mail 24h avant",
+    progress: 96,
+  },
+};
+
+function Reveal({
+  children,
+  className = "",
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.12 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      style={{ transitionDelay: `${delay}ms` }}
+      className={`transition-all duration-700 ease-out ${
+        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function BookiLandingPage() {
-  const [activeTab, setActiveTab] = useState<'planning' | 'pos' | 'inventory' | 'whatsapp'>('planning');
-  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(2);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+  const [activeTab, setActiveTab] = useState<PreviewTab>("planning");
+  const [mobileDevice, setMobileDevice] = useState<"desktop" | "tablet" | "phone">("desktop");
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const currentPreview = DESKTOP_TAB_DATA[activeTab];
 
   const faqs = [
     {
-      question: "En combien de temps puis-je configurer mon salon sur Booki ?",
-      answer: "Moins de 5 minutes. Créez votre compte, ajoutez vos prestations, vos collaborateurs et partagez immédiatement votre lien personnalisé (ex: votre-salon.booki.tn) sur Instagram et Google Maps."
+      question: "Combien de temps faut-il pour lancer mon salon sur Booki ?",
+      answer:
+        "Moins de 5 minutes. Créez votre compte, ajoutez vos prestations, votre équipe et publiez immédiatement votre lien personnalisé sur Instagram, Facebook et Google Maps. Aucune compétence technique n'est requise.",
     },
     {
-      question: "Booki fonctionne-t-il sur smartphone, tablette et ordinateur ?",
-      answer: "Oui. Booki est une Progressive Web App (PWA) ultra-rapide. Vous pouvez l'installer directement sur l'écran d'accueil de votre iPhone, Android, iPad ou PC sans passer par un store."
+      question: "Prenez-vous une commission sur les réservations de mes clients ?",
+      answer:
+        "Jamais. 0% de commission. Vous gardez 100% du montant de vos prestations et de vos ventes boutique — vous ne payez qu'un abonnement mensuel ou annuel fixe et transparent en TND.",
     },
     {
-      question: "Comment fonctionnent les rappels WhatsApp et la déduction des stocks ?",
-      answer: "Dès qu'un rendez-vous est pris, Booki programme un rappel WhatsApp automatique 24h avant pour éviter les absences. Côté stock, chaque prestation terminée déduit automatiquement les produits consommés et met à jour votre bénéfice net en TND."
+      question: "Et si la connexion Wi-Fi du salon coupe pendant que je travaille ?",
+      answer:
+        "Booki intègre un mode résilient hors ligne : vos formulaires ouverts ne se réinitialisent pas et une alerte discrète vous prévient dès que le réseau revient, sans perdre vos saisies en cours.",
     },
     {
-      question: "L'application mobile et le portail client sont-ils inclus dans tous les forfaits ?",
-      answer: "Absolument. Tous les plans incluent votre vitrine de réservation en ligne 24h/24, l'accès mobile illimité pour votre équipe et l'essai gratuit de 14 jours sans carte bancaire."
-    }
+      question: "Mes clients doivent-ils télécharger une application pour réserver ?",
+      answer:
+        "Non ! Votre portail de réservation et votre boutique s'ouvrent instantanément dans le navigateur de n'importe quel smartphone (iPhone ou Android), avec ajout du rendez-vous dans leur agenda en 1 clic.",
+    },
   ];
 
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans antialiased selection:bg-blue-600 selection:text-white overflow-x-hidden">
-      
+      <style>{`
+        @keyframes landingFloatSlow {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-9px); }
+        }
+        @keyframes landingFloatAlt {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(8px); }
+        }
+        @keyframes landingHeroIn {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-float-slow {
+          animation: landingFloatSlow 5.5s ease-in-out infinite;
+        }
+        .animate-float-alt {
+          animation: landingFloatAlt 6.2s ease-in-out infinite;
+        }
+        .animate-hero-in {
+          animation: landingHeroIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+      `}</style>
+
       {/* =====================================================================
-          1. HERO & FLOATING INTERACTIVE APP WINDOW (Sky Blue Gradient + Cloud Fade)
+          1. HERO + DESKTOP / TABLET / PHONE APP SHOWCASE
       ====================================================================== */}
-      <div className="relative bg-gradient-to-b from-[#2563EB] via-[#538BF5] to-[#B7D2FF] pt-4 pb-12">
-        
-        {/* Top Floating Glass Navbar */}
+      <div className="relative bg-gradient-to-b from-[#1E40AF] via-[#2563EB] to-[#DBEAFE] pt-4 pb-16 overflow-hidden">
+        {/* Soft Animated Ambient Blobs */}
+        <div className="pointer-events-none absolute -top-24 -left-24 w-80 h-80 rounded-full bg-white/10 blur-3xl animate-pulse" />
+        <div className="pointer-events-none absolute top-32 -right-24 w-96 h-96 rounded-full bg-sky-300/20 blur-3xl animate-pulse" />
+
+        {/* Top Navbar */}
         <header className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between text-white relative z-50">
           <Link href="/" className="flex items-center gap-2.5 group">
             <div className="w-8 h-8 rounded-xl bg-white text-[#2563EB] flex items-center justify-center font-black shadow-sm group-hover:scale-105 transition">
@@ -68,7 +258,7 @@ export default function BookiLandingPage() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-8 text-xs font-medium text-white/90">
-            <a href="#approach" className="hover:text-white transition">Solution</a>
+            <a href="#univers" className="hover:text-white transition">Métiers</a>
             <a href="#features" className="hover:text-white transition">Fonctionnalités</a>
             <a href="#testimonials" className="hover:text-white transition">Avis Salons</a>
             <a href="#pricing" className="hover:text-white transition">Tarifs</a>
@@ -84,16 +274,16 @@ export default function BookiLandingPage() {
             </Link>
             <Link
               href="/signup"
-              className="bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/25 text-white text-xs font-semibold px-4 py-2.5 rounded-lg transition shadow-xs"
+              className="bg-white text-[#2563EB] hover:bg-blue-50 text-xs font-bold px-4 py-2.5 rounded-xl transition shadow-sm"
             >
-              Essai Gratuit
+              Essai 14j Gratuit
             </Link>
           </div>
 
-          {/* Mobile Burger */}
           <button
+            type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg bg-white/15 text-white"
+            className="md:hidden p-2 rounded-lg bg-white/15 text-white cursor-pointer"
             aria-label="Menu"
           >
             {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -102,612 +292,811 @@ export default function BookiLandingPage() {
 
         {/* Mobile Dropdown */}
         {mobileMenuOpen && (
-          <div className="md:hidden mx-6 mt-2 bg-white rounded-2xl p-5 shadow-2xl border border-slate-100 space-y-3 text-xs font-semibold text-slate-800 relative z-50">
-            <a href="#approach" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Solution</a>
+          <div className="md:hidden mx-6 mt-2 bg-white rounded-2xl p-5 shadow-2xl border border-slate-100 space-y-3 text-xs font-semibold text-slate-800 relative z-50 animate-in fade-in zoom-in-95">
+            <a href="#univers" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Métiers</a>
             <a href="#features" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Fonctionnalités</a>
             <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Avis Salons</a>
             <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Tarifs</a>
             <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">FAQ</a>
             <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
-              <Link href="/login" className="w-full py-2.5 text-center rounded-xl bg-slate-100 text-slate-800">Connexion</Link>
-              <Link href="/signup" className="w-full py-2.5 text-center rounded-xl bg-[#2563EB] text-white">Créer un compte salon</Link>
+              <Link href="/login" className="w-full py-2.5 text-center rounded-xl bg-slate-100 text-slate-800">
+                Connexion
+              </Link>
+              <Link href="/signup" className="w-full py-2.5 text-center rounded-xl bg-[#2563EB] text-white">
+                Créer mon salon gratuitement
+              </Link>
             </div>
           </div>
         )}
 
-        {/* Hero Center Copy */}
-        <div className="max-w-3xl mx-auto px-6 pt-12 pb-12 text-center text-white space-y-5 relative z-10">
-          <h1 className="text-4xl sm:text-5xl md:text-[54px] font-bold tracking-tight leading-[1.12]">
-            La Gestion Intelligente <br />
-            de Votre Salon
+        {/* Hero Copy */}
+        <div className="max-w-3xl mx-auto px-6 pt-10 pb-10 text-center text-white space-y-5 relative z-10 animate-hero-in">
+          <span className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 backdrop-blur-md text-white text-[11px] font-bold px-3.5 py-1.5 rounded-full">
+            <Sparkles size={13} /> Conçu pour les Salons, Barbershops &amp; Spas en Tunisie
+          </span>
+          <h1 className="text-4xl sm:text-5xl md:text-[54px] font-black tracking-tight leading-[1.08]">
+            Remplissez votre agenda. <br className="hidden sm:inline" />
+            Libérez vos mains.
           </h1>
-          <p className="text-sm sm:text-base text-blue-100 max-w-xl mx-auto font-normal leading-relaxed">
-            Un tableau de bord puissant qui élimine les rendez-vous manqués, automatise vos rappels WhatsApp et pilote votre caisse en TND en temps réel.
+          <p className="text-sm sm:text-base text-blue-100 max-w-xl mx-auto leading-relaxed">
+            Fini les messages Instagram manqués pendant que vous coiffez et les chaises vides de dernière minute. Booki automatise vos réservations 24h/24, votre boutique et votre rentabilité en TND.
           </p>
+
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               href="/signup"
-              className="bg-slate-950 hover:bg-slate-900 text-white text-xs font-semibold px-6 py-3.5 rounded-lg shadow-lg shadow-slate-950/20 transition cursor-pointer"
+              className="group bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold px-7 py-4 rounded-xl shadow-xl shadow-slate-950/25 transition inline-flex items-center gap-2"
             >
-              Démarrer gratuitement (14j)
+              Lancer mon salon gratuitement
+              <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
             </Link>
             <a
               href="#features"
-              className="bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/25 text-white text-xs font-semibold px-6 py-3.5 rounded-lg transition"
+              className="bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/25 text-white text-xs font-bold px-6 py-4 rounded-xl transition"
             >
-              Découvrir la plateforme
+              Voir la démo interactive
             </a>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-[11px] text-blue-100 font-semibold pt-1">
+            <span className="flex items-center gap-1"><Check size={13} /> 14 jours gratuits</span>
+            <span className="flex items-center gap-1"><Check size={13} /> Sans carte bancaire</span>
+            <span className="flex items-center gap-1"><Check size={13} /> 0% commission par RDV</span>
           </div>
         </div>
 
-        {/* Interactive Desktop App Mockup (Exact PolicyPilot Window Style) */}
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 relative z-20">
-          <div className="bg-white rounded-2xl shadow-[0_25px_70px_-15px_rgba(15,23,42,0.22)] border border-white/80 overflow-hidden">
-            
-            {/* App Top Bar */}
-            <div className="border-b border-slate-100 px-5 py-3 flex flex-wrap items-center justify-between gap-4 bg-white">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-[#2563EB] text-white flex items-center justify-center">
-                  <Scissors size={12} />
+        {/* Mobile Device Selector (< lg screens) */}
+        <div className="lg:hidden flex justify-center px-4 mb-5 relative z-30">
+          <div className="inline-flex bg-slate-950/25 backdrop-blur-md p-1 rounded-2xl border border-white/20 text-white text-xs font-bold gap-1">
+            <button
+              type="button"
+              onClick={() => setMobileDevice("desktop")}
+              className={`px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
+                mobileDevice === "desktop" ? "bg-white text-blue-700 shadow-sm" : "text-white/90"
+              }`}
+            >
+              <Monitor size={14} /> Ordinateur
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileDevice("tablet")}
+              className={`px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
+                mobileDevice === "tablet" ? "bg-white text-blue-700 shadow-sm" : "text-white/90"
+              }`}
+            >
+              <Tablet size={14} /> Tablette
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileDevice("phone")}
+              className={`px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
+                mobileDevice === "phone" ? "bg-white text-blue-700 shadow-sm" : "text-white/90"
+              }`}
+            >
+              <Smartphone size={14} /> Téléphone
+            </button>
+          </div>
+        </div>
+
+        {/* MULTI-DEVICE SHOWCASE (Desktop + Tablet + Phone) */}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-20 lg:pb-12 animate-hero-in">
+          <div className="relative flex flex-col lg:block items-center">
+            {/* 1. DESKTOP WINDOW */}
+            <div
+              className={`w-full max-w-4xl mx-auto bg-slate-900 rounded-2xl p-2 sm:p-2.5 shadow-[0_30px_80px_-15px_rgba(15,23,42,0.45)] border border-slate-700/80 ${
+                mobileDevice === "desktop" ? "block" : "hidden lg:block"
+              }`}
+            >
+              <div className="flex items-center justify-between px-3 pb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                 </div>
-                <span className="font-bold text-xs text-slate-900">Booki Admin</span>
+                <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-3 py-0.5 rounded-full">
+                  app.booki.tn/admin
+                </span>
+                <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> En direct
+                </span>
               </div>
 
-              {/* Interactive Module Switcher Tabs */}
-              <div className="flex items-center gap-1 sm:gap-2 text-[11px] font-semibold">
-                {[
-                  { id: 'planning', label: 'Planning' },
-                  { id: 'pos', label: 'Caisse & Store' },
-                  { id: 'inventory', label: 'Stocks & COGS' },
-                  { id: 'whatsapp', label: 'WhatsApp Auto' },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                      activeTab === tab.id
-                        ? 'bg-blue-50 text-[#2563EB] font-bold'
-                        : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              <div className="bg-white rounded-xl overflow-hidden">
+                <div className="border-b border-slate-100 px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3 bg-white">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-[#2563EB] text-white flex items-center justify-center">
+                      <Scissors size={12} />
+                    </div>
+                    <span className="font-bold text-xs text-slate-900">Booki Admin</span>
+                  </div>
 
-              <div className="hidden sm:flex items-center gap-2">
-                <span className="text-[10px] font-semibold text-slate-400">The Art Barbershop</span>
-                <div className="w-7 h-7 rounded-full bg-blue-100 text-[#2563EB] font-bold text-[10px] flex items-center justify-center">
-                  YB
-                </div>
-              </div>
-            </div>
+                  <div className="flex items-center gap-1 text-[11px] font-semibold flex-wrap">
+                    {[
+                      { id: "planning", label: "Planning" },
+                      { id: "pos", label: "Boutique POS" },
+                      { id: "finance", label: "Rentabilité" },
+                      { id: "whatsapp", label: "WhatsApp" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id as PreviewTab)}
+                        className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                          activeTab === tab.id
+                            ? "bg-blue-50 text-[#2563EB] font-bold"
+                            : "text-slate-500 hover:text-slate-900"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
 
-            {/* App Body Content */}
-            <div className="p-5 sm:p-7 bg-[#F8FAFC] space-y-5">
-              
-              {/* Top Row Header inside App */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">
-                    {activeTab === 'planning' && 'Agenda & Réservations'}
-                    {activeTab === 'pos' && 'Caisse POS & Boutique'}
-                    {activeTab === 'inventory' && 'Inventaire & Consommables'}
-                    {activeTab === 'whatsapp' && 'Campagnes & Rappels WhatsApp'}
-                  </h2>
-                  <p className="text-[11px] text-slate-500">Vue multi-collaborateurs synchronisée en direct • Tunis</p>
-                </div>
-                <button className="bg-[#2563EB] text-white text-[11px] font-semibold px-3.5 py-2 rounded-lg flex items-center gap-1.5 shadow-xs">
-                  <Plus size={13} /> Nouveau RDV
-                </button>
-              </div>
-
-              {/* 4 Mini Summary Cards + 1 Chart Card (Matching the 5-card grid in the video) */}
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center">
-                    <Calendar size={14} />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">24 RDV</div>
-                    <div className="text-[10px] text-slate-400">Aujourd'hui</div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                    <CheckCircle2 size={14} />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">96% Confirmés</div>
-                    <div className="text-[10px] text-slate-400">Via WhatsApp</div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                    <ShoppingCart size={14} />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">1,280 TND</div>
-                    <div className="text-[10px] text-slate-400">Recette du jour</div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs space-y-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                    <Package size={14} />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">Stock Optimal</div>
-                    <div className="text-[10px] text-slate-400">Déduction auto</div>
-                  </div>
-                </div>
-
-                {/* Right-hand Compliance / Performance Bar Card */}
-                <div className="col-span-2 lg:col-span-1 bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-700">Taux Occupation</span>
-                    <span className="text-[10px] font-bold text-emerald-600">+18%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex my-1.5">
-                    <div className="bg-emerald-500 w-[64%]" />
-                    <div className="bg-amber-400 w-[22%]" />
-                    <div className="bg-rose-400 w-[14%]" />
-                  </div>
-                  <div className="flex justify-between text-[9px] text-slate-400 font-medium">
-                    <span>Confirmé</span>
-                    <span>En attente</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom Table + Right Blue Storage/Credits Card (Exact layout from frame 00:01) */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 p-4 shadow-2xs">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <span className="text-xs font-bold text-slate-800">Dernières Réservations & Encaissements</span>
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                      <Search size={12} /> <span>Filtrer</span>
+                  <div className="hidden sm:flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      The Art Barbershop
+                    </span>
+                    <div className="w-7 h-7 rounded-full bg-blue-100 text-[#2563EB] font-bold text-[10px] flex items-center justify-center">
+                      YB
                     </div>
                   </div>
+                </div>
 
-                  <div className="divide-y divide-slate-50 text-[11px]">
-                    {[
-                      { client: "Karim Mansouri", service: "Coupe + Barbe VIP", staff: "Youssef", price: "45 TND", status: "Confirmé" },
-                      { client: "Amira Trabelsi", service: "Balayage & Soin Kératine", staff: "Sarra", price: "180 TND", status: "En cours" },
-                      { client: "Sami Ben Ali", service: "Soin Visage & Coiffage", staff: "Mehdi", price: "65 TND", status: "Confirmé" },
-                    ].map((row, idx) => (
-                      <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
-                        <div className="font-semibold text-slate-800">{row.client}</div>
-                        <div className="text-slate-500 hidden sm:block">{row.service}</div>
-                        <div className="text-slate-400">{row.staff}</div>
-                        <div className="font-bold text-slate-900">{row.price}</div>
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700">
-                          {row.status}
+                <div className="p-4 sm:p-6 bg-[#F8FAFC] space-y-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h2 className="text-sm sm:text-base font-bold text-slate-900">
+                        {currentPreview.title}
+                      </h2>
+                      <p className="text-[11px] text-slate-500">{currentPreview.subtitle}</p>
+                    </div>
+                    <span className="bg-[#2563EB] text-white text-[10px] sm:text-[11px] font-semibold px-3 py-2 rounded-lg flex items-center gap-1 shadow-xs shrink-0">
+                      <Plus size={12} /> {currentPreview.cta}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {currentPreview.kpis.map((kpi, i) => (
+                      <div
+                        key={i}
+                        className="bg-white p-3 rounded-xl border border-slate-100 shadow-2xs space-y-1 transition hover:-translate-y-0.5"
+                      >
+                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full inline-block ${kpi.tone}`}>
+                          {kpi.label}
                         </span>
+                        <div className="text-xs sm:text-sm font-black text-slate-900">
+                          {kpi.value}
+                        </div>
+                        <div className="text-[10px] text-slate-400">{kpi.sub}</div>
                       </div>
                     ))}
                   </div>
-                </div>
 
-                {/* Blue Highlight Card inside App */}
-                <div className="bg-gradient-to-br from-[#2563EB] to-[#4F86F7] rounded-xl p-4 text-white flex flex-col justify-between shadow-md">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-blue-100">Crédits WhatsApp</span>
-                    <Sparkles size={14} className="text-blue-200" />
-                  </div>
-                  <div className="my-2">
-                    <div className="text-2xl font-black">84%</div>
-                    <div className="text-[10px] text-blue-100">42 / 50 rappels gratuits disponibles</div>
-                  </div>
-                  <div className="w-full bg-white/20 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-white h-full w-[84%]" />
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:pb-4">
+                    <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 p-4 shadow-2xs">
+                      <div className="divide-y divide-slate-50 text-[11px]">
+                        {currentPreview.rows.map((row, idx) => (
+                          <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
+                            <div className="font-semibold text-slate-800 truncate">{row.col1}</div>
+                            <div className="text-slate-500 hidden sm:block truncate">{row.col2}</div>
+                            <div className="text-slate-400 truncate">{row.col3}</div>
+                            <div className="font-bold text-slate-900 shrink-0">{row.col4}</div>
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 shrink-0">
+                              {row.badge}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-[#2563EB] to-[#4F86F7] rounded-xl p-4 text-white flex flex-col justify-between shadow-md">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-blue-100">
+                          {currentPreview.highlightLabel}
+                        </span>
+                        <Sparkles size={14} className="text-blue-200" />
+                      </div>
+                      <div className="my-2">
+                        <div className="text-2xl font-black">{currentPreview.highlightValue}</div>
+                        <div className="text-[10px] text-blue-100">{currentPreview.highlightSub}</div>
+                      </div>
+                      <div className="w-full bg-white/20 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-white h-full transition-all duration-500"
+                          style={{ width: `${currentPreview.progress}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
+            </div>
 
+            {/* 2. TABLET MOCKUP (Floating Left) */}
+            <div
+              className={`w-full max-w-[320px] lg:w-[270px] lg:absolute lg:left-0 lg:-bottom-6 z-30 bg-slate-900 rounded-[26px] p-2.5 shadow-2xl border-2 border-slate-700/80 lg:animate-float-slow ${
+                mobileDevice === "tablet" ? "block mx-auto" : "hidden lg:block"
+              }`}
+            >
+              <div className="flex items-center justify-center pb-1.5">
+                <span className="w-8 h-1 rounded-full bg-slate-700" />
+              </div>
+              <div className="bg-white rounded-[18px] overflow-hidden text-left">
+                <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-3 text-white flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-100 block">
+                      Tablette • Boutique
+                    </span>
+                    <strong className="text-xs font-black">Vente Produits</strong>
+                  </div>
+                  <span className="bg-white/20 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    Click &amp; Collect
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-50 space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white rounded-xl p-2 border border-slate-100 space-y-1.5">
+                      <img
+                        src={PHOTOS.shampoo}
+                        alt="Shampoing Pro"
+                        className="w-full h-16 object-cover rounded-lg"
+                      />
+                      <p className="text-[10px] font-bold text-slate-900 truncate">
+                        Shampoing Pro
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-amber-600">35 TND</span>
+                        <span className="w-4 h-4 rounded bg-slate-900 text-white text-[10px] flex items-center justify-center">
+                          +
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl p-2 border border-slate-100 space-y-1.5">
+                      <img
+                        src={PHOTOS.serum}
+                        alt="Sérum Éclat"
+                        className="w-full h-16 object-cover rounded-lg"
+                      />
+                      <p className="text-[10px] font-bold text-slate-900 truncate">
+                        Sérum Éclat
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-amber-600">45 TND</span>
+                        <span className="w-4 h-4 rounded bg-slate-900 text-white text-[10px] flex items-center justify-center">
+                          +
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl p-2.5 border border-slate-200/80 flex items-center justify-between text-[10px]">
+                    <span className="font-mono font-black text-indigo-600 flex items-center gap-1">
+                      <Ticket size={12} /> BK-8F2A9C
+                    </span>
+                    <span className="bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
+                      Prêt
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. PHONE MOCKUP (Floating Right) */}
+           {/* 3. PHONE MOCKUP (Real App Screenshot - Floating Right) */}
+            <div
+              className="w-[200px] h-[488px] lg:w-[218.7px] lg:h-[448px] lg:absolute lg:right-0 lg:-bottom-8 z-30 rounded-[40px] overflow-hidden bg-white shadow-[0_25px_60px_-15px_rgba(15,23,42,0.5)] ring-1 ring-slate-900/15 lg:animate-float-alt"
+               
+            >
+              <img
+                src="/images/phone-planning.png"
+                alt="Application mobile Booki - Planning & Réservations"
+                className="w-full h-full object-cover object-[45.7%_50%] scale-[1.06]"
+              />
             </div>
           </div>
-
-          {/* Atmospheric White Cloud Mist Fade Overlay at Bottom of Hero Window */}
-          <div className="pointer-events-none absolute inset-x-0 -bottom-6 h-32 bg-gradient-to-t from-white via-white/95 to-transparent z-30" />
         </div>
       </div>
 
       {/* =====================================================================
-          2. TRUSTED BY SALONS (Monochrome Partner Logos Strip)
+          2. SALON UNIVERSES (Persuasive Copy + Hover Motion Photos)
       ====================================================================== */}
-      <section className="py-12 px-6 bg-white relative z-30">
-        <div className="max-w-5xl mx-auto text-center space-y-6">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-            Adopté par les meilleurs salons en Tunisie
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-14 opacity-50 grayscale">
-            <span className="font-black text-base tracking-wider text-slate-800">THE ART BARBER</span>
-            <span className="font-serif italic font-bold text-lg text-slate-800">Sarra K. Lounge</span>
-            <span className="font-extrabold text-sm tracking-widest text-slate-800 border border-slate-400 px-2.5 py-1">URBAN CUT</span>
-            <span className="font-bold text-base tracking-tight text-slate-800">MAISON ÉLITE</span>
-            <span className="font-black text-sm tracking-widest text-slate-800">CARTHAGE SPA</span>
-          </div>
-        </div>
-      </section>
-
-      {/* =====================================================================
-          3. EFFORTLESS SALON OPERATIONS (3-Column Minimalist Icon Row)
-      ====================================================================== */}
-      <section id="approach" className="py-20 px-6 bg-white">
-        <div className="max-w-5xl mx-auto text-center space-y-14">
-          <div className="space-y-3 max-w-xl mx-auto">
+      <section id="univers" className="py-20 px-6 bg-white">
+        <div className="max-w-6xl mx-auto space-y-10">
+          <Reveal className="text-center space-y-3 max-w-2xl mx-auto">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
-              Notre Approche
+              À Votre Image
             </span>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
-              Une gestion de salon <br /> sans effort
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              Une expérience client digne des plus grands salons
             </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-            {/* Item 1 */}
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="relative w-16 h-16 flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border border-dashed border-blue-200 animate-[spin_20s_linear_infinite]" />
-                <div className="w-11 h-11 rounded-full bg-[#2563EB] text-white flex items-center justify-center shadow-md shadow-blue-600/25">
-                  <Calendar size={18} />
-                </div>
-              </div>
-              <h3 className="font-bold text-sm text-slate-900">Réservation en Ligne 24h/24</h3>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
-                Vos clients réservent depuis votre lien personnalisé sur Instagram ou Google sans interrompre vos prestations.
-              </p>
-            </div>
-
-            {/* Item 2 */}
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="relative w-16 h-16 flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border border-dashed border-blue-200" />
-                <div className="w-11 h-11 rounded-full bg-[#2563EB] text-white flex items-center justify-center shadow-md shadow-blue-600/25">
-                  <Package size={18} />
-                </div>
-              </div>
-              <h3 className="font-bold text-sm text-slate-900">Suivi Automatique des Stocks</h3>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
-                Chaque soin validé déduit automatiquement vos consommables et calcule votre marge nette en Dinar Tunisien.
-              </p>
-            </div>
-
-            {/* Item 3 */}
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="relative w-16 h-16 flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border border-dashed border-blue-200" />
-                <div className="w-11 h-11 rounded-full bg-[#2563EB] text-white flex items-center justify-center shadow-md shadow-blue-600/25">
-                  <Bell size={18} />
-                </div>
-              </div>
-              <h3 className="font-bold text-sm text-slate-900">Rappels WhatsApp & Promo</h3>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
-                Réduisez les absences de 85% grâce aux notifications WhatsApp automatiques et fidélisez avec des codes promo.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* =====================================================================
-          4. KEY FEATURES (2x2 Pastel Bento Grid with Floating UI Widgets)
-      ====================================================================== */}
-      <section id="features" className="py-20 px-6 bg-white">
-        <div className="max-w-5xl mx-auto space-y-12">
-          <div className="text-center space-y-3 max-w-xl mx-auto">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
-              Fonctionnalités Clés
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
-              Tout ce dont vous avez besoin <br /> pour piloter votre activité
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* Bento Card 01 */}
-            <div className="rounded-3xl bg-gradient-to-b from-[#F4F7FF] to-[#EBF1FF] p-7 border border-blue-100/70 flex flex-col justify-between space-y-6">
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 space-y-3">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-bold text-slate-800">Rentabilité Mensuelle (TND)</span>
-                  <span className="text-emerald-600 font-bold">+24%</span>
-                </div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                  <div className="bg-emerald-500 w-[68%]" />
-                  <div className="bg-amber-400 w-[20%]" />
-                  <div className="bg-rose-400 w-[12%]" />
-                </div>
-                <div className="flex items-baseline justify-between pt-1">
-                  <div>
-                    <span className="text-xl font-black text-slate-900">4,350 TND</span>
-                    <span className="text-[10px] text-slate-400 ml-1.5">Bénéfice Net</span>
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-500">Salaires & COGS déduits</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-[11px] font-extrabold text-[#2563EB]">01</span>
-                <h3 className="text-base font-bold text-slate-900">Bilan Financier Automatisé</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Suivez en temps réel vos recettes prestations, ventes boutique, salaires d'équipe et coûts de réapprovisionnement sans tableur Excel.
-                </p>
-              </div>
-            </div>
-
-            {/* Bento Card 02 */}
-            <div className="rounded-3xl bg-gradient-to-b from-[#EEF4FF] to-[#DCE8FF] p-7 border border-blue-100/70 flex flex-col justify-between space-y-6">
-              <div className="bg-gradient-to-br from-[#2563EB] to-[#568DF8] rounded-2xl p-5 text-white shadow-md flex items-center justify-between">
-                <div className="space-y-1">
-                  <span className="text-[10px] uppercase tracking-wider text-blue-100 font-bold">Crédits WhatsApp</span>
-                  <div className="text-3xl font-black">50 Offerts</div>
-                  <p className="text-[10px] text-blue-100">Rappels 24h avant & codes promo</p>
-                </div>
-                <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-xs flex items-center justify-center">
-                  <MessageSquare size={24} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-[11px] font-extrabold text-[#2563EB]">02</span>
-                <h3 className="text-base font-bold text-slate-900">Marketing & Rappels WhatsApp</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Connectez votre compte WhatsApp Business, personnalisez vos modèles de relance et diffusez vos offres spéciales en un clic.
-                </p>
-              </div>
-            </div>
-
-            {/* Bento Card 03 */}
-            <div className="rounded-3xl bg-gradient-to-b from-[#FFF9F2] to-[#FFF2E2] p-7 border border-amber-100/70 flex flex-col justify-between space-y-6">
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-amber-100/80 flex items-center justify-between">
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Réservations du Mois</span>
-                  <div className="text-2xl font-black text-slate-900">420</div>
-                  <span className="text-[10px] text-emerald-600 font-semibold">+12% vs mois dernier</span>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                  <TrendingUp size={18} />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-[11px] font-extrabold text-amber-600">03</span>
-                <h3 className="text-base font-bold text-slate-900">Boutique en Ligne & Caisse POS</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Vendez vos shampoings, huiles et soins en salon ou en Click & Collect avec génération automatique de reçus clients.
-                </p>
-              </div>
-            </div>
-
-            {/* Bento Card 04 */}
-            <div className="rounded-3xl bg-gradient-to-b from-[#F2FBF9] to-[#E3F6F1] p-7 border border-emerald-100/70 flex flex-col justify-between space-y-6">
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-emerald-100/80 space-y-2.5">
-                <div className="text-[10px] font-bold text-slate-400 uppercase">Performance Équipe</div>
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 text-[#2563EB] font-bold text-[10px] flex items-center justify-center">YB</div>
-                    <span className="font-bold text-slate-800">Youssef B.</span>
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-500">98 RDV • 2,450 TND</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center justify-center">SK</div>
-                    <span className="font-bold text-slate-800">Sarra K.</span>
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-500">84 RDV • 3,120 TND</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-[11px] font-extrabold text-emerald-600">04</span>
-                <h3 className="text-base font-bold text-slate-900">Planning & Commissions Équipe</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Gérez les horaires de chaque coiffeur ou esthéticienne, suivez leurs prestations réalisées et simplifiez le calcul des salaires.
-                </p>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      {/* =====================================================================
-          5. TESTIMONIALS (Minimalist 3-Column Quote Cards)
-      ====================================================================== */}
-      <section id="testimonials" className="py-20 px-6 bg-white">
-        <div className="max-w-5xl mx-auto space-y-12">
-          <div className="text-center space-y-3">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
-              Témoignages
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
-              Ce que disent nos salons partenaires
-            </h2>
-          </div>
+            <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+              Que vous soyez coiffeur indépendant, barbershop urbain ou institut de beauté, Booki s&apos;adapte à votre identité, vos couleurs et votre rythme.
+            </p>
+          </Reveal>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               {
-                quote: "Avant Booki, on notait tout sur un cahier et on perdait 3 à 4 créneaux par jour à cause des oublis. Avec les rappels WhatsApp, nos no-shows ont chuté de 85%.",
-                author: "Youssef Ben Amor",
-                role: "The Art Barbershop, La Marsa"
+                title: "Salons de Coiffure",
+                desc: "Colorations, kératine, brushing : maîtrisez la durée de chaque soin et déduisez vos consommables automatiquement.",
+                img: PHOTOS.salon,
+                tag: "Coiffure & Visagisme",
               },
               {
-                quote: "Le calcul automatique de la rentabilité et la déduction du stock de colorations à chaque rendez-vous me font gagner des heures chaque semaine.",
-                author: "Sarra Khemir",
-                role: "Sarra K Beauty Lounge, Sousse"
+                title: "Barbershops & Studios",
+                desc: "Encaissez vos clients de passage en 2 clics et boostez vos ventes d'huiles, cires et coffrets barber.",
+                img: PHOTOS.barber,
+                tag: "Barbershop",
               },
               {
-                quote: "Nos clients réservent directement depuis notre bio Instagram à minuit. L'interface est ultra-rapide sur téléphone comme sur tablette à l'accueil.",
-                author: "Mehdi Trabelsi",
-                role: "Urban Cut Studio, Lac 2 Tunis"
-              }
-            ].map((item, idx) => (
-              <div key={idx} className="bg-[#F8FAFC] rounded-2xl p-6 border border-slate-100 flex flex-col justify-between space-y-6">
-                <div className="space-y-3">
-                  <span className="text-3xl font-serif text-blue-200 leading-none block">“</span>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    {item.quote}
-                  </p>
+                title: "Spas & Instituts Beauté",
+                desc: "Offrez à vos clientes une réservation élégante à votre image, avec codes promo VIP et fiches de fidélité.",
+                img: PHOTOS.spa,
+                tag: "Spa & Esthétique",
+              },
+            ].map((card, i) => (
+              <Reveal key={i} delay={i * 100}>
+                <div className="group relative h-72 rounded-3xl overflow-hidden shadow-md hover:shadow-xl border border-slate-100 transition-all duration-300 hover:-translate-y-1.5">
+                  <img
+                    src={card.img}
+                    alt={card.title}
+                    className="w-full h-full object-cover group-hover:scale-110 transition duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/35 to-transparent" />
+                  <div className="absolute bottom-0 left-0 right-0 p-6 text-white space-y-2">
+                    <span className="inline-block bg-white/20 backdrop-blur-md text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                      {card.tag}
+                    </span>
+                    <h3 className="text-lg font-black">{card.title}</h3>
+                    <p className="text-xs text-slate-200 leading-relaxed">{card.desc}</p>
+                  </div>
                 </div>
-                <div>
-                  <div className="font-bold text-xs text-slate-900">{item.author}</div>
-                  <div className="text-[11px] text-slate-400">{item.role}</div>
-                </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
       {/* =====================================================================
-          6. PRICING (3 Cards with Elevated Royal-Blue Center Pro Card)
+          3. FULL-WIDTH HORIZONTAL COLORED FEATURES SECTION
       ====================================================================== */}
-      <section id="pricing" className="py-20 px-6 bg-white">
-        <div className="max-w-5xl mx-auto space-y-12">
-          <div className="text-center space-y-4 max-w-xl mx-auto">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
-              Tarification Transparente
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
-              Choisissez le plan adapté <br /> à votre salon
-            </h2>
+      <section id="features" className="pt-16 bg-slate-50/60">
+        <Reveal className="max-w-3xl mx-auto px-6 pb-12 text-center space-y-3">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
+            Fonctionnalités Clés
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+            Tout ce qu&apos;il faut pour gagner plus, en travaillant plus sereinement
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500">
+            Quatre outils puissants réunis dans une seule interface ultra-simple.
+          </p>
+        </Reveal>
 
-            {/* Billing Switch */}
-            <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl text-xs font-semibold">
-              <button
-                onClick={() => setBillingCycle('monthly')}
-                className={`px-4 py-1.5 rounded-lg transition cursor-pointer ${
-                  billingCycle === 'monthly' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'
-                }`}
-              >
-                Mensuel
-              </button>
-              <button
-                onClick={() => setBillingCycle('annual')}
-                className={`px-4 py-1.5 rounded-lg transition cursor-pointer ${
-                  billingCycle === 'annual' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'
-                }`}
-              >
-                Annuel (-20%)
-              </button>
-            </div>
+        {/* Full-Width Stacked Horizontal Bands */}
+        <div className="w-full">
+          {/* BAND 1: WHATSAPP & PROMO CODES (EMERALD FULL WIDTH) */}
+          <div className="w-full bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 text-white py-14 sm:py-16 px-6">
+            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              <div className="lg:col-span-7 space-y-4">
+                <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs text-[10px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full">
+                  <MessageSquare size={12} /> 01 • WhatsApp &amp; Codes Promo
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-black leading-tight">
+                  Zéro chaise vide : vos clients n&apos;oublient plus jamais leur rendez-vous.
+                </h3>
+                <p className="text-xs sm:text-sm text-emerald-50 leading-relaxed max-w-2xl">
+                  Un client qui oublie, c&apos;est du chiffre d&apos;affaires perdu. Avec Booki, relancez toute votre liste de demain sur WhatsApp en un clic, lancez des codes promo ciblés et publiez vos offres sur vos statuts en 10 secondes.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-semibold pt-2">
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-200 shrink-0" /> Messages WhatsApp pré-remplis en 1 clic</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-200 shrink-0" /> Codes promo (% ou TND) avec expiration</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-200 shrink-0" /> Modèles personnalisables avec variables</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-200 shrink-0" /> Générateur d&apos;annonces pour statuts &amp; groupes</span>
+                </div>
+              </div>
+
+              <div className="lg:col-span-5">
+                <div className="bg-white text-slate-900 rounded-3xl p-5 shadow-2xl space-y-3.5 transition-transform duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <MessageSquare size={17} />
+                      </div>
+                      <div>
+                        <strong className="text-xs block">Rappel Demain • 10:00</strong>
+                        <span className="text-[10px] text-slate-400">Nadia Gharbi • Brushing &amp; Soin</span>
+                      </div>
+                    </div>
+                    <span className="bg-emerald-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg">
+                      Relancé ✓
+                    </span>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3.5 text-xs text-emerald-950 leading-relaxed">
+                    &ldquo;Bonjour Nadia 👋, petit rappel pour votre rendez-vous chez <strong>Booki Studio</strong> demain à 10:00. À très vite !&rdquo;
+                  </div>
+                  <div className="flex items-center justify-between bg-slate-50 px-3.5 py-2.5 rounded-xl text-xs font-bold">
+                    <span className="flex items-center gap-1.5 text-slate-700">
+                      <Tag size={14} className="text-emerald-600" /> Code : <span className="font-mono">VIP2026</span>
+                    </span>
+                    <span className="text-emerald-600">-20% Actif</span>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-            
-            {/* Left Card: Solo */}
-            <div className="bg-[#F8FAFC] rounded-3xl p-7 border border-slate-200/80 space-y-6">
-              <div className="space-y-2">
-                <h3 className="font-bold text-sm text-slate-900">Plan Solo</h3>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-slate-900">
-                    {billingCycle === 'annual' ? '39' : '49'} TND
-                  </span>
-                  <span className="text-xs text-slate-400">/ mois</span>
+          {/* BAND 2: BOOKING 24/7 (ROYAL BLUE FULL WIDTH) */}
+          <div className="w-full bg-gradient-to-r from-[#1D4ED8] via-[#2563EB] to-indigo-700 text-white py-14 sm:py-16 px-6">
+            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              <div className="lg:col-span-5 order-2 lg:order-1">
+                <div className="bg-white text-slate-900 rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 hover:-translate-y-1">
+                  <div className="relative h-36">
+                    <img src={PHOTOS.beauty} alt="Portail de réservation 24h/24" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 to-transparent" />
+                    <div className="absolute bottom-3 left-4 right-4 text-white flex items-center justify-between">
+                      <div>
+                        <strong className="text-sm block">votre-salon.booki.tn</strong>
+                        <span className="text-[11px] text-blue-200 flex items-center gap-1">
+                          <MapPin size={11} /> Lac 2, Tunis
+                        </span>
+                      </div>
+                      <span className="bg-blue-600 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                        Ouvert 24h/24
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-900">Soin Kératine &amp; Coupe</span>
+                      <span className="font-black text-[#2563EB]">120.00 TND</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] font-bold">
+                      <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600">09:30</span>
+                      <span className="px-3 py-1.5 rounded-lg bg-[#2563EB] text-white shadow-xs">11:00</span>
+                      <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600">14:30</span>
+                      <span className="ml-auto text-emerald-600 flex items-center gap-1 text-[10px]">
+                        <Calendar size={12} /> .ics + E-mail
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-500">Idéal pour les indépendants et barbiers solo.</p>
               </div>
 
-              <ul className="space-y-3 text-xs text-slate-600 border-t border-slate-200/70 pt-5">
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> 1 Collaborateur</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Lien de réservation personnalisé</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> 50 rappels WhatsApp / mois</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Agenda mobile PWA</li>
-              </ul>
-
-              <Link
-                href="/signup"
-                className="block w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-center text-xs font-semibold transition"
-              >
-                Commencer l'essai
-              </Link>
-            </div>
-
-            {/* Center Elevated Card: Salon Standard (Exact PolicyPilot Business Plan look) */}
-            <div className="bg-gradient-to-b from-[#2563EB] to-[#4E85F6] rounded-3xl p-8 text-white shadow-2xl shadow-blue-600/25 space-y-6 md:-my-4 relative">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-sm text-white">Salon Standard</h3>
-                  <span className="bg-white/20 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                    Populaire
-                  </span>
+              <div className="lg:col-span-7 space-y-4 order-1 lg:order-2">
+                <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs text-[10px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full">
+                  <Calendar size={12} /> 02 • Réservation en Ligne 24/7
                 </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-black text-white">
-                    {billingCycle === 'annual' ? '79' : '99'} TND
-                  </span>
-                  <span className="text-xs text-blue-100">/ mois</span>
+                <h3 className="text-2xl sm:text-3xl font-black leading-tight">
+                  Votre réceptionniste digitale travaille même à 2h du matin.
+                </h3>
+                <p className="text-xs sm:text-sm text-blue-50 leading-relaxed max-w-2xl">
+                  Mettez votre lien Booki dans votre bio Instagram et sur Google Maps. Vos clients choisissent leur soin, leur praticien et leur heure en 30 secondes — sans jamais interrompre votre travail ni créer de double réservation.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-semibold pt-2">
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-blue-200 shrink-0" /> Créneaux temps réel sans chevauchement</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-blue-200 shrink-0" /> Confirmation e-mail &amp; rappel J-1 auto</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-blue-200 shrink-0" /> Ajout direct Apple &amp; Google Agenda</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-blue-200 shrink-0" /> Portail aux couleurs &amp; logo du salon</span>
                 </div>
-                <p className="text-[11px] text-blue-100">Pour les salons en croissance avec équipe et boutique.</p>
+              </div>
+            </Reveal>
+          </div>
+
+          {/* BAND 3: STORE & POS (AMBER / ORANGE FULL WIDTH) */}
+          <div className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 text-white py-14 sm:py-16 px-6">
+            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              <div className="lg:col-span-7 space-y-4">
+                <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs text-[10px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full">
+                  <ShoppingCart size={12} /> 03 • Boutique Click &amp; Collect &amp; Caisse POS
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-black leading-tight">
+                  Transformez vos shampoings et soins en source de revenus automatique.
+                </h3>
+                <p className="text-xs sm:text-sm text-amber-50 leading-relaxed max-w-2xl">
+                  Vos clients commandent leurs produits préférés en ligne et viennent payer &amp; retirer au salon avec leur code unique. Au comptoir, encaissez vos ventes directes en espèces ou carte et imprimez la facture en un clic.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-semibold pt-2">
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-amber-100 shrink-0" /> Vitrine Click &amp; Collect avec code retrait</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-amber-100 shrink-0" /> Vente directe au comptoir (POS)</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-amber-100 shrink-0" /> Factures PDF prêtes à imprimer</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-amber-100 shrink-0" /> Calcul de marge &amp; alerte stock faible</span>
+                </div>
               </div>
 
-              <ul className="space-y-3 text-xs text-white/95 border-t border-white/15 pt-5">
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Jusqu'à 5 collaborateurs</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Caisse POS & Boutique en ligne</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Déduction automatique des stocks</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Bilan financier & rentabilité nette</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Support prioritaire WhatsApp</li>
-              </ul>
-
-              <Link
-                href="/signup"
-                className="block w-full py-3.5 rounded-xl bg-white hover:bg-blue-50 text-[#2563EB] text-center text-xs font-bold shadow-md transition"
-              >
-                Activer Salon Standard
-              </Link>
-            </div>
-
-            {/* Right Card: Franchise */}
-            <div className="bg-[#F8FAFC] rounded-3xl p-7 border border-slate-200/80 space-y-6">
-              <div className="space-y-2">
-                <h3 className="font-bold text-sm text-slate-900">Multi-Salons</h3>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-black text-slate-900">
-                    {billingCycle === 'annual' ? '149' : '180'} TND
-                  </span>
-                  <span className="text-xs text-slate-400">/ mois</span>
+              <div className="lg:col-span-5">
+                <div className="bg-white text-slate-900 rounded-3xl p-5 shadow-2xl space-y-3.5 transition-transform duration-300 hover:-translate-y-1">
+                  <div className="flex items-center gap-3.5">
+                    <img
+                      src={PHOTOS.shampoo}
+                      alt="Produit Salon"
+                      className="w-16 h-16 rounded-2xl object-cover shrink-0 border border-slate-100"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[9px] font-extrabold uppercase text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full">
+                        Click &amp; Collect
+                      </span>
+                      <h4 className="text-sm font-black truncate mt-1">
+                        Pack Soin Hydratant Pro
+                      </h4>
+                      <span className="text-xs font-black text-slate-900">80.00 TND</span>
+                    </div>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3 border border-dashed border-amber-300 flex items-center justify-between text-xs">
+                    <span className="font-mono font-black text-amber-700 flex items-center gap-1.5">
+                      <Ticket size={15} /> BK-8F2A9C10
+                    </span>
+                    <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full">
+                      Payé au salon
+                    </span>
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-500">Pour les grands centres esthétiques et réseaux.</p>
+              </div>
+            </Reveal>
+          </div>
+
+          {/* BAND 4: MANAGE SALON & PROFITABILITY (INDIGO / VIOLET FULL WIDTH) */}
+          <div className="w-full bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 text-white py-14 sm:py-16 px-6">
+            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              <div className="lg:col-span-5 order-2 lg:order-1">
+                <div className="bg-white text-slate-900 rounded-3xl p-5 shadow-2xl space-y-3.5 transition-transform duration-300 hover:-translate-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 flex items-center gap-1">
+                      <Wallet size={13} /> Bénéfice Net du Mois
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full">
+                      +24% vs mois dernier
+                    </span>
+                  </div>
+                  <div className="text-3xl font-black text-slate-900">4,350.00 TND</div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-[11px] font-bold text-slate-500">
+                      <span>Seuil de rentabilité (Point Mort)</span>
+                      <span className="text-emerald-600">100% couvert</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="bg-emerald-500 h-full w-full" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
+                    <div className="bg-slate-50 p-2.5 rounded-xl font-bold text-slate-700">
+                      📦 Stock : Déduit auto
+                    </div>
+                    <div className="bg-slate-50 p-2.5 rounded-xl font-bold text-slate-700">
+                      👥 Équipe : 4/4 Payés
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <ul className="space-y-3 text-xs text-slate-600 border-t border-slate-200/70 pt-5">
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Collaborateurs illimités</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Gestion multi-adresses</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Campagnes WhatsApp avancées</li>
-                <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Configuration sur place (Tunis)</li>
-              </ul>
-
-              <Link
-                href="/signup"
-                className="block w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-center text-xs font-semibold transition"
-              >
-                Nous contacter
-              </Link>
-            </div>
-
+              <div className="lg:col-span-7 space-y-4 order-1 lg:order-2">
+                <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs text-[10px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full">
+                  <TrendingUp size={12} /> 04 • Gestion Complète &amp; Rentabilité
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-black leading-tight">
+                  Fini les mauvaises surprises : pilotez votre vrai bénéfice net.
+                </h3>
+                <p className="text-xs sm:text-sm text-indigo-50 leading-relaxed max-w-2xl">
+                  Encaisser beaucoup ne veut pas toujours dire gagner beaucoup. Booki suit le coût de vos produits consommés, vos factures, votre loyer et les salaires de votre équipe pour vous montrer votre rentabilité réelle chaque jour.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-semibold pt-2">
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-indigo-200 shrink-0" /> Planning timeline &amp; Walk-ins rapides</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-indigo-200 shrink-0" /> Marge nette calculée par prestation</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-indigo-200 shrink-0" /> Suivi des salaires, point mort &amp; export CSV</span>
+                  <span className="flex items-center gap-2"><CheckCircle2 size={16} className="text-indigo-200 shrink-0" /> Notifications en direct &amp; protection hors ligne</span>
+                </div>
+              </div>
+            </Reveal>
           </div>
         </div>
       </section>
 
       {/* =====================================================================
-          7. FAQ ACCORDION (Minimalist + / x Style from frame 00:10)
+          4. TESTIMONIALS
+      ====================================================================== */}
+      <section id="testimonials" className="py-20 px-6 bg-white">
+        <div className="max-w-5xl mx-auto space-y-12">
+          <Reveal className="text-center space-y-3">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
+              Ils Utilisent Booki au Quotidien
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              Des résultats concrets dès la première semaine
+            </h2>
+          </Reveal>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                quote:
+                  "Avant, je passais ma soirée à répondre aux DM Instagram. Aujourd'hui mes clients réservent seuls à 23h et mon agenda du lendemain est plein au réveil.",
+                author: "Youssef Ben Amor",
+                role: "The Art Barbershop • La Marsa",
+              },
+              {
+                quote:
+                  "Voir exactement ce que me coûtent les produits par prestation et suivre le paiement de mon équipe dans la même app m'a fait gagner des heures chaque semaine.",
+                author: "Sarra Khemir",
+                role: "Sarra K Beauty Lounge • Sousse",
+              },
+              {
+                quote:
+                  "Nos ventes de shampoings et soins ont augmenté grâce au Click & Collect. Les clientes commandent en ligne et récupèrent au comptoir avec leur code.",
+                author: "Mehdi Trabelsi",
+                role: "Urban Cut Studio • Lac 2 Tunis",
+              },
+            ].map((item, idx) => (
+              <Reveal key={idx} delay={idx * 100}>
+                <div className="h-full bg-[#F8FAFC] rounded-3xl p-6 border border-slate-100 flex flex-col justify-between space-y-6 hover:shadow-md hover:-translate-y-1 transition duration-300">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-1 text-amber-400">
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Star key={s} size={13} fill="currentColor" />
+                      ))}
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">&ldquo;{item.quote}&rdquo;</p>
+                  </div>
+                  <div>
+                    <div className="font-bold text-xs text-slate-900">{item.author}</div>
+                    <div className="text-[11px] text-slate-400">{item.role}</div>
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* =====================================================================
+          5. PRICING
+      ====================================================================== */}
+      <section id="pricing" className="py-20 px-6 bg-slate-50/70">
+        <div className="max-w-5xl mx-auto space-y-12">
+          <Reveal className="text-center space-y-4 max-w-xl mx-auto">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
+              Tarification Simple &amp; Transparente
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              0% de commission. Un prix fixe en TND.
+            </h2>
+            <p className="text-xs text-slate-500">
+              Commencez avec 14 jours d&apos;essai complet sans engagement ni carte bancaire.
+            </p>
+
+            <div className="inline-flex items-center bg-slate-200/70 p-1 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setBillingCycle("monthly")}
+                className={`px-4 py-1.5 rounded-lg transition cursor-pointer ${
+                  billingCycle === "monthly" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500"
+                }`}
+              >
+                Mensuel
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingCycle("annual")}
+                className={`px-4 py-1.5 rounded-lg transition cursor-pointer ${
+                  billingCycle === "annual" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500"
+                }`}
+              >
+                Annuel (-20%)
+              </button>
+            </div>
+          </Reveal>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+            <Reveal delay={0}>
+              <div className="bg-white rounded-3xl p-7 border border-slate-200/80 space-y-6 hover:shadow-lg transition">
+                <div className="space-y-2">
+                  <h3 className="font-bold text-sm text-slate-900">Plan Solo</h3>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-black text-slate-900">
+                      {billingCycle === "annual" ? "39" : "49"} TND
+                    </span>
+                    <span className="text-xs text-slate-400">/ mois</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">Pour les indépendants et barbiers solo.</p>
+                </div>
+
+                <ul className="space-y-3 text-xs text-slate-600 border-t border-slate-100 pt-5">
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> 1 Collaborateur</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Lien de réservation 24h/24</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Rappels WhatsApp &amp; E-mail</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Agenda PWA mobile</li>
+                </ul>
+
+                <Link
+                  href="/signup"
+                  className="block w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-center text-xs font-semibold transition"
+                >
+                  Essayer gratuitement
+                </Link>
+              </div>
+            </Reveal>
+
+            <Reveal delay={100}>
+              <div className="bg-gradient-to-b from-[#2563EB] to-[#4E85F6] rounded-3xl p-8 text-white shadow-2xl shadow-blue-600/25 space-y-6 md:-my-4 relative hover:-translate-y-1 transition duration-300">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-sm text-white">Salon Standard</h3>
+                    <span className="bg-white/20 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                      Le plus choisi
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-black text-white">
+                      {billingCycle === "annual" ? "79" : "99"} TND
+                    </span>
+                    <span className="text-xs text-blue-100">/ mois</span>
+                  </div>
+                  <p className="text-[11px] text-blue-100">Tout pour piloter équipe, boutique et rentabilité.</p>
+                </div>
+
+                <ul className="space-y-3 text-xs text-white/95 border-t border-white/15 pt-5">
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Jusqu&apos;à 5 collaborateurs</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Boutique Click &amp; Collect + POS</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Marges &amp; stock consommables</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Bilan financier, salaires &amp; CSV</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Support prioritaire WhatsApp</li>
+                </ul>
+
+                <Link
+                  href="/signup"
+                  className="block w-full py-3.5 rounded-xl bg-white hover:bg-blue-50 text-[#2563EB] text-center text-xs font-bold shadow-md transition"
+                >
+                  Démarrer 14 jours gratuits
+                </Link>
+              </div>
+            </Reveal>
+
+            <Reveal delay={200}>
+              <div className="bg-white rounded-3xl p-7 border border-slate-200/80 space-y-6 hover:shadow-lg transition">
+                <div className="space-y-2">
+                  <h3 className="font-bold text-sm text-slate-900">Multi-Salons</h3>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-3xl font-black text-slate-900">
+                      {billingCycle === "annual" ? "149" : "180"} TND
+                    </span>
+                    <span className="text-xs text-slate-400">/ mois</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">Pour les grands centres esthétiques et réseaux.</p>
+                </div>
+
+                <ul className="space-y-3 text-xs text-slate-600 border-t border-slate-100 pt-5">
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Collaborateurs illimités</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Gestion multi-adresses</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Codes promo &amp; campagnes avancées</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Accompagnement sur place (Tunis)</li>
+                </ul>
+
+                <Link
+                  href="/signup"
+                  className="block w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-center text-xs font-semibold transition"
+                >
+                  Créer mon compte
+                </Link>
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* =====================================================================
+          6. FAQ ACCORDION
       ====================================================================== */}
       <section id="faq" className="py-20 px-6 bg-white">
         <div className="max-w-3xl mx-auto space-y-10">
-          <div className="text-center space-y-2">
+          <Reveal className="text-center space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
               FAQ
             </span>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">
-              Questions Fréquentes
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              Vos questions, nos réponses
             </h2>
-          </div>
+          </Reveal>
 
           <div className="divide-y divide-slate-100">
             {faqs.map((faq, idx) => {
@@ -715,9 +1104,10 @@ export default function BookiLandingPage() {
               return (
                 <div
                   key={idx}
-                  className={`transition rounded-2xl ${isOpen ? 'bg-[#F8FAFC] px-5 py-4 my-2' : 'py-4 px-2'}`}
+                  className={`transition rounded-2xl ${isOpen ? "bg-[#F8FAFC] px-5 py-4 my-2" : "py-4 px-2"}`}
                 >
                   <button
+                    type="button"
                     onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
                     className="w-full flex items-center justify-between gap-4 text-left text-xs sm:text-sm font-bold text-slate-900 cursor-pointer"
                   >
@@ -727,9 +1117,7 @@ export default function BookiLandingPage() {
                     </span>
                   </button>
                   {isOpen && (
-                    <p className="mt-3 text-xs text-slate-500 leading-relaxed pr-8">
-                      {faq.answer}
-                    </p>
+                    <p className="mt-3 text-xs text-slate-500 leading-relaxed pr-8">{faq.answer}</p>
                   )}
                 </div>
               );
@@ -739,84 +1127,48 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          8. ORBITAL SKY CTA BANNER (Exact Layout from frames 00:11 - 00:14)
+          7. FINAL ORBITAL CTA BANNER
       ====================================================================== */}
-      <section className="relative bg-gradient-to-b from-[#6FA3FF] via-[#3A75F0] to-[#1D54D8] py-28 px-6 text-white overflow-hidden">
-        
-        {/* Concentric Dashed Orbital Circles */}
+      <section className="relative bg-gradient-to-b from-[#3B82F6] via-[#2563EB] to-[#1D4ED8] py-24 px-6 text-white overflow-hidden">
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="w-[340px] h-[340px] sm:w-[540px] sm:h-[540px] rounded-full border border-dashed border-white/25" />
-          <div className="absolute w-[520px] h-[520px] sm:w-[820px] sm:h-[820px] rounded-full border border-dashed border-white/15" />
+          <div className="w-[340px] h-[340px] sm:w-[540px] sm:h-[540px] rounded-full border border-dashed border-white/25 animate-[spin_50s_linear_infinite]" />
+          <div className="absolute w-[520px] h-[520px] sm:w-[820px] sm:h-[820px] rounded-full border border-dashed border-white/15 animate-[spin_80s_linear_infinite_reverse]" />
         </div>
 
-        {/* Floating Live UI Cards on Orbit */}
-        <div className="max-w-5xl mx-auto relative z-10">
-          
-          {/* Top Right Floating Card */}
-          <div className="hidden md:flex items-center gap-3 bg-white text-slate-900 px-4 py-2.5 rounded-2xl shadow-xl w-fit ml-auto mr-16 mb-6">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center">
-              <Bell size={15} />
-            </div>
-            <div>
-              <div className="text-[11px] font-bold">Rappel WhatsApp Envoyé</div>
-              <div className="text-[10px] text-slate-400">Karim M. • Demain à 10:00</div>
-            </div>
+        <Reveal className="max-w-xl mx-auto text-center space-y-5 relative z-10">
+          <span className="inline-flex items-center gap-1.5 bg-white/15 px-3 py-1 rounded-full text-[11px] font-bold">
+            <Zap size={12} /> Prêt en 5 minutes
+          </span>
+          <h2 className="text-3xl sm:text-5xl font-black tracking-tight leading-[1.12]">
+            Offrez à votre salon l&apos;image qu&apos;il mérite
+          </h2>
+          <p className="text-xs sm:text-sm text-blue-100 max-w-md mx-auto leading-relaxed">
+            Rejoignez les gérants qui ont remplacé le cahier papier par un système clair, rapide et rentable.
+          </p>
+          <div className="pt-2 flex flex-col items-center gap-3">
+            <Link
+              href="/signup"
+              className="group inline-flex items-center gap-2 bg-slate-950 hover:bg-slate-900 text-white text-xs font-bold px-7 py-4 rounded-xl shadow-xl transition"
+            >
+              Démarrer gratuitement (14 jours)
+              <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
+            </Link>
+            <span className="text-[11px] text-blue-100 flex items-center gap-1.5">
+              <ShieldCheck size={13} /> Aucune carte bancaire requise
+            </span>
           </div>
-
-          {/* Center CTA Block */}
-          <div className="max-w-xl mx-auto text-center space-y-5 py-6">
-            <h2 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.15]">
-              Prenez le contrôle de <br /> votre salon dès aujourd'hui
-            </h2>
-            <p className="text-xs sm:text-sm text-blue-100 max-w-md mx-auto leading-relaxed">
-              Automatisez vos réservations, éliminez les absences et suivez votre rentabilité en TND depuis un seul tableau de bord.
-            </p>
-            <div className="pt-2">
-              <Link
-                href="/signup"
-                className="inline-block bg-slate-950 hover:bg-slate-900 text-white text-xs font-semibold px-7 py-3.5 rounded-xl shadow-xl transition"
-              >
-                Démarrer gratuitement
-              </Link>
-            </div>
-          </div>
-
-          {/* Bottom Floating Cards Row */}
-          <div className="hidden md:flex items-center justify-between mt-6 px-4">
-            <div className="bg-white text-slate-900 p-4 rounded-2xl shadow-xl w-56 space-y-2">
-              <div className="flex justify-between text-[10px] font-bold">
-                <span>Bénéfice Net</span>
-                <span className="text-emerald-600">+18%</span>
-              </div>
-              <div className="text-lg font-black">4,350 TND</div>
-              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div className="bg-emerald-500 h-full w-[75%]" />
-              </div>
-            </div>
-
-            <div className="bg-white text-slate-900 p-4 rounded-2xl shadow-xl w-60 space-y-2">
-              <div className="text-[10px] font-bold text-slate-400 uppercase">Équipe Active</div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold">Youssef B.</span>
-                <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">En service</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold">Sarra K.</span>
-                <span className="text-[10px] bg-blue-50 text-[#2563EB] px-2 py-0.5 rounded-full font-bold">En prestation</span>
-              </div>
-            </div>
-          </div>
-
-        </div>
+        </Reveal>
       </section>
 
       {/* =====================================================================
-          9. CLEAN MINIMAL FOOTER
+          8. FOOTER
       ====================================================================== */}
       <footer className="bg-slate-950 text-slate-400 py-10 px-6 text-xs">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-white font-bold">
-            <span>Booki<span className="text-blue-500">.tn</span></span>
+            <span>
+              Booki<span className="text-blue-500">.tn</span>
+            </span>
             <span className="text-slate-500 font-normal ml-2">© 2026 Booki Tunisia.</span>
           </div>
           <div className="flex items-center gap-6">
@@ -827,7 +1179,6 @@ export default function BookiLandingPage() {
           </div>
         </div>
       </footer>
-
     </div>
   );
 }
