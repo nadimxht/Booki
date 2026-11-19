@@ -134,32 +134,44 @@ const DESKTOP_TAB_DATA: Record<
   },
 };
 
-function CroppedPhone({
+const APP_GALLERY = [
+  { src: "/images/screen-dashboard.png", label: "Tableau de Bord", sub: "Chiffre d'affaires & KPIs" },
+  { src: "/images/screen-whatsapp.png", label: "Publicité & WhatsApp", sub: "Relances & annonces 1-clic" },
+  { src: "/images/screen-expenses.png", label: "Rentabilité Nette", sub: "Point mort & charges" },
+  { src: "/images/screen-book-services.png", label: "Portail RDV 24/7", sub: "Choix des prestations" },
+  { src: "/images/screen-book-calendar.png", label: "Créneaux en Direct", sub: "Matin & Après-midi" },
+  { src: "/images/screen-store.png", label: "Boutique Salon", sub: "Panier & Click & Collect" },
+];
+
+function PhoneScreen({
   src,
-  posX,
   alt,
-  scale = 1.04,
+  rotated = true,
   className = "",
 }: {
   src: string;
-  posX: string;
   alt: string;
-  scale?: number;
+  rotated?: boolean;
   className?: string;
 }) {
   return (
     <div
-      className={`relative aspect-[9/18.2] rounded-[34px] overflow-hidden bg-white shadow-[0_25px_55px_-12px_rgba(15,23,42,0.45)] ring-1 ring-black/10 ${className}`}
+      className={`relative aspect-[9/18.2] rounded-[34px] overflow-hidden bg-white shadow-[0_25px_55px_-12px_rgba(15,23,42,0.45)] ring-1 ring-black/15 ${className}`}
     >
-      <img
-        src={src}
-        alt={alt}
-        style={{
-          objectPosition: `${posX} 50%`,
-          transform: `scale(${scale})`,
-        }}
-        className="w-full h-full object-cover"
-      />
+      {rotated ? (
+        <img
+          src={src}
+          alt={alt}
+          style={{ transform: "translate(-50%, -50%) rotate(90deg) scale(1.03)" }}
+          className="absolute top-1/2 left-1/2 w-[202%] max-w-none h-[50%] object-cover object-[50%_46%]"
+        />
+      ) : (
+        <img
+          src={src}
+          alt={alt}
+          className="w-full h-full object-cover object-[47.5%_50%] scale-[1.05]"
+        />
+      )}
     </div>
   );
 }
@@ -605,10 +617,9 @@ export default function BookiLandingPage() {
                 mobileDevice === "phone" ? "block mx-auto" : "hidden lg:block"
               }`}
             >
-              <CroppedPhone
+              <PhoneScreen
                 src="/images/phone-calendar.png"
-                posX="47.5%"
-                scale={1.05}
+                rotated={false}
                 alt="Planning & Réservations sur mobile Booki"
                 className="w-[240px] lg:w-[225px]"
               />
@@ -618,10 +629,10 @@ export default function BookiLandingPage() {
       </div>
 
       {/* =====================================================================
-          2. SWIPEABLE 6-PHONE REAL APP PANORAMA STRIP
+          2. HIGH-RES 6-SCREEN APP GALLERY
       ====================================================================== */}
-      <section id="ecrans" className="py-16 px-4 sm:px-6 bg-white border-b border-slate-100">
-        <div className="max-w-6xl mx-auto space-y-6">
+      <section id="ecrans" className="py-18 px-4 sm:px-6 bg-white border-b border-slate-100">
+        <div className="max-w-7xl mx-auto space-y-10">
           <Reveal className="text-center space-y-2 max-w-2xl mx-auto">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
               Aperçu Réel de l&apos;Application
@@ -630,29 +641,38 @@ export default function BookiLandingPage() {
               Toute votre gestion et votre vitrine client dans votre poche
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
-              Tableau de bord, campagnes WhatsApp, rentabilité, prise de RDV en ligne et boutique Click &amp; Collect.
+              Découvrez les vrais écrans utilisés chaque jour par les salons et leurs clients.
             </p>
           </Reveal>
 
           <Reveal delay={100}>
-            <div className="overflow-x-auto pb-2 -mx-2 px-2">
-              <div className="min-w-[860px] md:min-w-0 md:w-full rounded-3xl bg-white p-2">
-                <img
-                  src="/images/phones-strip.png"
-                  alt="Les 6 écrans clés de Booki sur iPhone"
-                  className="w-full h-auto object-contain mx-auto"
-                />
-              </div>
+            <div className="flex lg:grid lg:grid-cols-6 gap-5 overflow-x-auto lg:overflow-visible pb-4 lg:pb-0 snap-x snap-mandatory px-2">
+              {APP_GALLERY.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="snap-center shrink-0 w-[185px] lg:w-full flex flex-col items-center space-y-3 group"
+                >
+                  <PhoneScreen
+                    src={item.src}
+                    alt={item.label}
+                    className="w-full group-hover:-translate-y-2 transition-transform duration-300"
+                  />
+                  <div className="text-center">
+                    <h3 className="text-xs font-black text-slate-900">{item.label}</h3>
+                    <p className="text-[10px] text-slate-400 font-medium">{item.sub}</p>
+                  </div>
+                </div>
+              ))}
             </div>
-            <p className="md:hidden text-center text-[11px] font-bold text-slate-400 mt-1">
-              ← Glissez horizontalement pour voir les 6 écrans →
+            <p className="lg:hidden text-center text-[11px] font-bold text-slate-400 mt-1">
+              ← Glissez pour parcourir les 6 écrans →
             </p>
           </Reveal>
         </div>
       </section>
 
       {/* =====================================================================
-          3. SALON UNIVERSES (Photography Cards)
+          3. SALON UNIVERSES
       ====================================================================== */}
       <section id="univers" className="py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto space-y-10">
@@ -712,7 +732,7 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          4. FULL-WIDTH HORIZONTAL COLORED FEATURES WITH REAL CROPPED SCREENS
+          4. FULL-WIDTH HORIZONTAL COLORED FEATURES WITH HIGH-RES REAL SCREENS
       ====================================================================== */}
       <section id="features" className="pt-16 bg-slate-50/60">
         <Reveal className="max-w-3xl mx-auto px-6 pb-12 text-center space-y-3">
@@ -728,7 +748,7 @@ export default function BookiLandingPage() {
         </Reveal>
 
         <div className="w-full">
-          {/* BAND 1: WHATSAPP & PROMO CODES (EMERALD FULL WIDTH + CROPPED PHONE 2) */}
+          {/* BAND 1: WHATSAPP & PROMO CODES (EMERALD FULL WIDTH) */}
           <div className="w-full bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 text-white py-14 sm:py-16 px-6">
             <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-7 space-y-4">
@@ -750,9 +770,8 @@ export default function BookiLandingPage() {
               </div>
 
               <div className="lg:col-span-5 flex justify-center">
-                <CroppedPhone
-                  src="/images/phones-strip.png"
-                  posX="20.5%"
+                <PhoneScreen
+                  src="/images/screen-whatsapp.png"
                   alt="Publicité & WhatsApp sur Booki"
                   className="w-[215px] sm:w-[235px] rotate-2 hover:rotate-0 transition-transform duration-500"
                 />
@@ -760,20 +779,18 @@ export default function BookiLandingPage() {
             </Reveal>
           </div>
 
-          {/* BAND 2: BOOKING 24/7 (ROYAL BLUE FULL WIDTH + CROPPED PHONES 4 & 5) */}
+          {/* BAND 2: BOOKING 24/7 (ROYAL BLUE FULL WIDTH) */}
           <div className="w-full bg-gradient-to-r from-[#1D4ED8] via-[#2563EB] to-indigo-700 text-white py-14 sm:py-16 px-6">
             <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-5 order-2 lg:order-1 flex justify-center items-center">
                 <div className="flex items-center justify-center -space-x-10 sm:-space-x-12">
-                  <CroppedPhone
-                    src="/images/phones-strip.png"
-                    posX="59.8%"
+                  <PhoneScreen
+                    src="/images/screen-book-services.png"
                     alt="Portail de réservation client - Prestations"
                     className="w-[175px] sm:w-[205px] -rotate-6 hover:rotate-0 hover:z-20 transition-all duration-500"
                   />
-                  <CroppedPhone
-                    src="/images/phones-strip.png"
-                    posX="79.5%"
+                  <PhoneScreen
+                    src="/images/screen-book-calendar.png"
                     alt="Portail de réservation client - Calendrier et Créneaux"
                     className="w-[175px] sm:w-[205px] rotate-6 translate-y-4 hover:rotate-0 hover:z-20 transition-all duration-500 z-10"
                   />
@@ -800,7 +817,7 @@ export default function BookiLandingPage() {
             </Reveal>
           </div>
 
-          {/* BAND 3: STORE & POS (AMBER / ORANGE FULL WIDTH + CROPPED PHONE 6) */}
+          {/* BAND 3: STORE & POS (AMBER / ORANGE FULL WIDTH) */}
           <div className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 text-white py-14 sm:py-16 px-6">
             <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-7 space-y-4">
@@ -822,9 +839,8 @@ export default function BookiLandingPage() {
               </div>
 
               <div className="lg:col-span-5 flex justify-center">
-                <CroppedPhone
-                  src="/images/phones-strip.png"
-                  posX="99%"
+                <PhoneScreen
+                  src="/images/screen-store.png"
                   alt="Boutique Click & Collect Booki"
                   className="w-[215px] sm:w-[235px] -rotate-2 hover:rotate-0 transition-transform duration-500"
                 />
@@ -832,20 +848,18 @@ export default function BookiLandingPage() {
             </Reveal>
           </div>
 
-          {/* BAND 4: MANAGE SALON & PROFITABILITY (INDIGO / VIOLET FULL WIDTH + CROPPED PHONES 1 & 3) */}
+          {/* BAND 4: MANAGE SALON & PROFITABILITY (INDIGO / VIOLET FULL WIDTH) */}
           <div className="w-full bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 text-white py-14 sm:py-16 px-6">
             <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-5 order-2 lg:order-1 flex justify-center items-center">
                 <div className="flex items-center justify-center -space-x-10 sm:-space-x-12">
-                  <CroppedPhone
-                    src="/images/phones-strip.png"
-                    posX="1%"
+                  <PhoneScreen
+                    src="/images/screen-dashboard.png"
                     alt="Tableau de bord Booki"
                     className="w-[175px] sm:w-[205px] -rotate-6 hover:rotate-0 hover:z-20 transition-all duration-500"
                   />
-                  <CroppedPhone
-                    src="/images/phones-strip.png"
-                    posX="40.2%"
+                  <PhoneScreen
+                    src="/images/screen-expenses.png"
                     alt="Dépenses & Rentabilité Booki"
                     className="w-[175px] sm:w-[205px] rotate-6 translate-y-4 hover:rotate-0 hover:z-20 transition-all duration-500 z-10"
                   />
