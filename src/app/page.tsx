@@ -17,11 +17,8 @@ import {
   Monitor,
   Tablet,
   Smartphone,
-  Tag,
   Ticket,
-  Wallet,
   ArrowRight,
-  MapPin,
   ShieldCheck,
   Zap,
   Star,
@@ -33,8 +30,6 @@ const PHOTOS = {
   barber:
     "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&q=80&w=1200",
   spa: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&q=80&w=1200",
-  beauty:
-    "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&q=80&w=800",
   shampoo:
     "https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?auto=format&fit=crop&w=600&q=80",
   serum:
@@ -62,15 +57,15 @@ const DESKTOP_TAB_DATA: Record<
     subtitle: "Timeline multi-praticiens synchronisée • Tunis",
     cta: "Nouveau Walk-in",
     kpis: [
-      { label: "Aujourd'hui", value: "24 RDV", sub: "5 en cours", tone: "text-blue-600 bg-blue-50" },
+      { label: "Aujourd'hui", value: "22 RDV", sub: "Asma & Maha", tone: "text-blue-600 bg-blue-50" },
       { label: "Confirmés", value: "96% Remplis", sub: "Zéro oubli", tone: "text-emerald-600 bg-emerald-50" },
-      { label: "CA Prévu", value: "1,280 TND", sub: "Prestations", tone: "text-amber-600 bg-amber-50" },
+      { label: "CA Prévu", value: "820 TND", sub: "Prestations", tone: "text-amber-600 bg-amber-50" },
       { label: "Consommables", value: "Marge +78%", sub: "Coût déduit", tone: "text-indigo-600 bg-indigo-50" },
     ],
     rows: [
-      { col1: "Karim Mansouri", col2: "Coupe + Barbe VIP", col3: "Youssef", col4: "45 TND", badge: "En cours" },
-      { col1: "Amira Trabelsi", col2: "Balayage & Kératine", col3: "Sarra", col4: "180 TND", badge: "Confirmé" },
-      { col1: "Sami Ben Ali", col2: "Soin Visage Express", col3: "Mehdi", col4: "65 TND", badge: "Terminé" },
+      { col1: "Azza Slimene", col2: "Brushing & Soin", col3: "Maha", col4: "60 TND", badge: "Terminé" },
+      { col1: "Sami Trabelsi", col2: "Coupe & Coiffage", col3: "Asma", col4: "45 TND", badge: "Terminé" },
+      { col1: "Mehdi Gharbi", col2: "Soin Kératine", col3: "Maha", col4: "120 TND", badge: "En cours" },
     ],
     highlightLabel: "Taux d'occupation",
     highlightValue: "88%",
@@ -88,7 +83,7 @@ const DESKTOP_TAB_DATA: Record<
       { label: "Alertes Stock", value: "2 Produits", sub: "Seuil ≤ 3", tone: "text-rose-600 bg-rose-50" },
     ],
     rows: [
-      { col1: "BK-8F2A9C", col2: "Shampoing Pro 500ml", col3: "Click & Collect", col4: "35 TND", badge: "Prêt" },
+      { col1: "BK-8F2A9C", col2: "Premium Keratin Kit", col3: "Click & Collect", col4: "80 TND", badge: "Prêt" },
       { col1: "POS-41D9E2", col2: "Sérum Éclat + Cire", col3: "Client Comptoir", col4: "72 TND", badge: "Payé" },
       { col1: "BK-19C4B0", col2: "Huile Barbe Bio", col3: "Carte", col4: "45 TND", badge: "Payé" },
     ],
@@ -102,19 +97,19 @@ const DESKTOP_TAB_DATA: Record<
     subtitle: "Point mort, charges fixes & salaires",
     cta: "Export CSV",
     kpis: [
-      { label: "Recettes Mois", value: "11,450 TND", sub: "RDV + Store", tone: "text-emerald-600 bg-emerald-50" },
-      { label: "Charges", value: "-4,120 TND", sub: "Loyer & Achats", tone: "text-rose-600 bg-rose-50" },
-      { label: "Salaires", value: "4 / 4 Payés", sub: "Équipe réglée", tone: "text-indigo-600 bg-indigo-50" },
-      { label: "Bénéfice Net", value: "4,350 TND", sub: "Marge 38%", tone: "text-blue-600 bg-blue-50" },
+      { label: "Recettes Mois", value: "2,759 TND", sub: "RDV + Store", tone: "text-emerald-600 bg-emerald-50" },
+      { label: "Charges", value: "-1,500 TND", sub: "Salaires & Achats", tone: "text-rose-600 bg-rose-50" },
+      { label: "Salaires", value: "Payés", sub: "Équipe réglée", tone: "text-indigo-600 bg-indigo-50" },
+      { label: "Point Mort", value: "100%", sub: "Couvert", tone: "text-blue-600 bg-blue-50" },
     ],
     rows: [
-      { col1: "Loyer du Salon", col2: "Charge fixe", col3: "01/11/2026", col4: "-1,500 TND", badge: "Réglé" },
-      { col1: "Restock Kératine", col2: "Inventaire auto", col3: "12/11/2026", col4: "-620 TND", badge: "Stock" },
-      { col1: "Salaires Équipe", col2: "Paie mensuelle", col3: "05/11/2026", col4: "-2,000 TND", badge: "Payé" },
+      { col1: "Salaires & Prime", col2: "Paie mensuelle", col3: "01/11/2026", col4: "-1,500 TND", badge: "Payé" },
+      { col1: "Achats Produits", col2: "Inventaire auto", col3: "12/11/2026", col4: "-730 TND", badge: "Stock" },
+      { col1: "Recettes Salon", col2: "Prestations + Store", col3: "19/11/2026", col4: "+2,759 TND", badge: "Net" },
     ],
     highlightLabel: "Seuil de rentabilité",
     highlightValue: "100%",
-    highlightSub: "Point mort couvert dès le 14",
+    highlightSub: "Toutes vos charges sont couvertes",
     progress: 100,
   },
   whatsapp: {
@@ -138,6 +133,36 @@ const DESKTOP_TAB_DATA: Record<
     progress: 96,
   },
 };
+
+function CroppedPhone({
+  src,
+  posX,
+  alt,
+  scale = 1.04,
+  className = "",
+}: {
+  src: string;
+  posX: string;
+  alt: string;
+  scale?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`relative aspect-[9/18.2] rounded-[34px] overflow-hidden bg-white shadow-[0_25px_55px_-12px_rgba(15,23,42,0.45)] ring-1 ring-black/10 ${className}`}
+    >
+      <img
+        src={src}
+        alt={alt}
+        style={{
+          objectPosition: `${posX} 50%`,
+          transform: `scale(${scale})`,
+        }}
+        className="w-full h-full object-cover"
+      />
+    </div>
+  );
+}
 
 function Reveal({
   children,
@@ -193,22 +218,22 @@ export default function BookiLandingPage() {
     {
       question: "Combien de temps faut-il pour lancer mon salon sur Booki ?",
       answer:
-        "Moins de 5 minutes. Créez votre compte, ajoutez vos prestations, votre équipe et publiez immédiatement votre lien personnalisé sur Instagram, Facebook et Google Maps. Aucune compétence technique n'est requise.",
+        "Moins de 5 minutes. Créez votre compte, ajoutez vos prestations, votre équipe et publiez immédiatement votre lien personnalisé sur Instagram, Facebook et Google Maps.",
     },
     {
       question: "Prenez-vous une commission sur les réservations de mes clients ?",
       answer:
-        "Jamais. 0% de commission. Vous gardez 100% du montant de vos prestations et de vos ventes boutique — vous ne payez qu'un abonnement mensuel ou annuel fixe et transparent en TND.",
+        "Jamais. 0% de commission. Vous gardez 100% du montant de vos prestations et de vos ventes boutique — vous ne payez qu'un abonnement mensuel ou annuel fixe en TND.",
     },
     {
       question: "Et si la connexion Wi-Fi du salon coupe pendant que je travaille ?",
       answer:
-        "Booki intègre un mode résilient hors ligne : vos formulaires ouverts ne se réinitialisent pas et une alerte discrète vous prévient dès que le réseau revient, sans perdre vos saisies en cours.",
+        "Booki intègre un mode résilient hors ligne : vos formulaires ouverts ne se réinitialisent pas et une alerte discrète vous prévient dès que le réseau revient, sans perdre vos saisies.",
     },
     {
       question: "Mes clients doivent-ils télécharger une application pour réserver ?",
       answer:
-        "Non ! Votre portail de réservation et votre boutique s'ouvrent instantanément dans le navigateur de n'importe quel smartphone (iPhone ou Android), avec ajout du rendez-vous dans leur agenda en 1 clic.",
+        "Non ! Votre portail de réservation et votre boutique s'ouvrent instantanément dans le navigateur de n'importe quel smartphone, avec ajout du rendez-vous dans leur agenda en 1 clic.",
     },
   ];
 
@@ -239,10 +264,9 @@ export default function BookiLandingPage() {
       `}</style>
 
       {/* =====================================================================
-          1. HERO + DESKTOP / TABLET / PHONE APP SHOWCASE
+          1. HERO + DESKTOP / TABLET / REAL PHONE APP SHOWCASE
       ====================================================================== */}
       <div className="relative bg-gradient-to-b from-[#1E40AF] via-[#2563EB] to-[#DBEAFE] pt-4 pb-16 overflow-hidden">
-        {/* Soft Animated Ambient Blobs */}
         <div className="pointer-events-none absolute -top-24 -left-24 w-80 h-80 rounded-full bg-white/10 blur-3xl animate-pulse" />
         <div className="pointer-events-none absolute top-32 -right-24 w-96 h-96 rounded-full bg-sky-300/20 blur-3xl animate-pulse" />
 
@@ -258,9 +282,9 @@ export default function BookiLandingPage() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-8 text-xs font-medium text-white/90">
+            <a href="#ecrans" className="hover:text-white transition">Aperçu App</a>
             <a href="#univers" className="hover:text-white transition">Métiers</a>
             <a href="#features" className="hover:text-white transition">Fonctionnalités</a>
-            <a href="#testimonials" className="hover:text-white transition">Avis Salons</a>
             <a href="#pricing" className="hover:text-white transition">Tarifs</a>
             <a href="#faq" className="hover:text-white transition">FAQ</a>
           </nav>
@@ -293,9 +317,9 @@ export default function BookiLandingPage() {
         {/* Mobile Dropdown */}
         {mobileMenuOpen && (
           <div className="md:hidden mx-6 mt-2 bg-white rounded-2xl p-5 shadow-2xl border border-slate-100 space-y-3 text-xs font-semibold text-slate-800 relative z-50 animate-in fade-in zoom-in-95">
+            <a href="#ecrans" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Aperçu App</a>
             <a href="#univers" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Métiers</a>
             <a href="#features" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Fonctionnalités</a>
-            <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Avis Salons</a>
             <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Tarifs</a>
             <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">FAQ</a>
             <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
@@ -334,7 +358,7 @@ export default function BookiLandingPage() {
               href="#features"
               className="bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/25 text-white text-xs font-bold px-6 py-4 rounded-xl transition"
             >
-              Voir la démo interactive
+              Explorer les fonctionnalités
             </a>
           </div>
 
@@ -345,7 +369,7 @@ export default function BookiLandingPage() {
           </div>
         </div>
 
-        {/* Mobile Device Selector (< lg screens) */}
+        {/* Mobile Device Selector (< lg) */}
         <div className="lg:hidden flex justify-center px-4 mb-5 relative z-30">
           <div className="inline-flex bg-slate-950/25 backdrop-blur-md p-1 rounded-2xl border border-white/20 text-white text-xs font-bold gap-1">
             <button
@@ -378,7 +402,7 @@ export default function BookiLandingPage() {
           </div>
         </div>
 
-        {/* MULTI-DEVICE SHOWCASE (Desktop + Tablet + Phone) */}
+        {/* MULTI-DEVICE SHOWCASE */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-20 lg:pb-12 animate-hero-in">
           <div className="relative flex flex-col lg:block items-center">
             {/* 1. DESKTOP WINDOW */}
@@ -433,11 +457,9 @@ export default function BookiLandingPage() {
                   </div>
 
                   <div className="hidden sm:flex items-center gap-2">
-                    <span className="text-[10px] font-semibold text-slate-400">
-                      The Art Barbershop
-                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">Divine Curls</span>
                     <div className="w-7 h-7 rounded-full bg-blue-100 text-[#2563EB] font-bold text-[10px] flex items-center justify-center">
-                      YB
+                      DC
                     </div>
                   </div>
                 </div>
@@ -464,9 +486,7 @@ export default function BookiLandingPage() {
                         <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full inline-block ${kpi.tone}`}>
                           {kpi.label}
                         </span>
-                        <div className="text-xs sm:text-sm font-black text-slate-900">
-                          {kpi.value}
-                        </div>
+                        <div className="text-xs sm:text-sm font-black text-slate-900">{kpi.value}</div>
                         <div className="text-[10px] text-slate-400">{kpi.sub}</div>
                       </div>
                     ))}
@@ -542,9 +562,7 @@ export default function BookiLandingPage() {
                         alt="Shampoing Pro"
                         className="w-full h-16 object-cover rounded-lg"
                       />
-                      <p className="text-[10px] font-bold text-slate-900 truncate">
-                        Shampoing Pro
-                      </p>
+                      <p className="text-[10px] font-bold text-slate-900 truncate">Shampoing Pro</p>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-black text-amber-600">35 TND</span>
                         <span className="w-4 h-4 rounded bg-slate-900 text-white text-[10px] flex items-center justify-center">
@@ -559,9 +577,7 @@ export default function BookiLandingPage() {
                         alt="Sérum Éclat"
                         className="w-full h-16 object-cover rounded-lg"
                       />
-                      <p className="text-[10px] font-bold text-slate-900 truncate">
-                        Sérum Éclat
-                      </p>
+                      <p className="text-[10px] font-bold text-slate-900 truncate">Sérum Éclat</p>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-black text-amber-600">45 TND</span>
                         <span className="w-4 h-4 rounded bg-slate-900 text-white text-[10px] flex items-center justify-center">
@@ -583,16 +599,18 @@ export default function BookiLandingPage() {
               </div>
             </div>
 
-            {/* 3. PHONE MOCKUP (Floating Right) */}
-           {/* 3. PHONE MOCKUP (Real App Screenshot - Floating Right) */}
+            {/* 3. REAL PHONE SCREENSHOT (Planning & Réservations - Floating Right) */}
             <div
-              className="w-[200px] h-[488px] lg:w-[218.7px] lg:h-[448px] lg:absolute lg:right-0 lg:-bottom-8 z-30 rounded-[40px] overflow-hidden bg-white shadow-[0_25px_60px_-15px_rgba(15,23,42,0.5)] ring-1 ring-slate-900/15 lg:animate-float-alt"
-               
+              className={`lg:absolute lg:right-0 lg:-bottom-10 z-30 lg:animate-float-alt ${
+                mobileDevice === "phone" ? "block mx-auto" : "hidden lg:block"
+              }`}
             >
-              <img
-                src="/images/phone-planning.png"
-                alt="Application mobile Booki - Planning & Réservations"
-                className="w-full h-full object-cover object-[45.7%_50%] scale-[1.06]"
+              <CroppedPhone
+                src="/images/phone-calendar.png"
+                posX="47.5%"
+                scale={1.05}
+                alt="Planning & Réservations sur mobile Booki"
+                className="w-[240px] lg:w-[225px]"
               />
             </div>
           </div>
@@ -600,7 +618,41 @@ export default function BookiLandingPage() {
       </div>
 
       {/* =====================================================================
-          2. SALON UNIVERSES (Persuasive Copy + Hover Motion Photos)
+          2. SWIPEABLE 6-PHONE REAL APP PANORAMA STRIP
+      ====================================================================== */}
+      <section id="ecrans" className="py-16 px-4 sm:px-6 bg-white border-b border-slate-100">
+        <div className="max-w-6xl mx-auto space-y-6">
+          <Reveal className="text-center space-y-2 max-w-2xl mx-auto">
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
+              Aperçu Réel de l&apos;Application
+            </span>
+            <h2 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              Toute votre gestion et votre vitrine client dans votre poche
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500">
+              Tableau de bord, campagnes WhatsApp, rentabilité, prise de RDV en ligne et boutique Click &amp; Collect.
+            </p>
+          </Reveal>
+
+          <Reveal delay={100}>
+            <div className="overflow-x-auto pb-2 -mx-2 px-2">
+              <div className="min-w-[860px] md:min-w-0 md:w-full rounded-3xl bg-white p-2">
+                <img
+                  src="/images/phones-strip.png"
+                  alt="Les 6 écrans clés de Booki sur iPhone"
+                  className="w-full h-auto object-contain mx-auto"
+                />
+              </div>
+            </div>
+            <p className="md:hidden text-center text-[11px] font-bold text-slate-400 mt-1">
+              ← Glissez horizontalement pour voir les 6 écrans →
+            </p>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* =====================================================================
+          3. SALON UNIVERSES (Photography Cards)
       ====================================================================== */}
       <section id="univers" className="py-20 px-6 bg-white">
         <div className="max-w-6xl mx-auto space-y-10">
@@ -612,7 +664,7 @@ export default function BookiLandingPage() {
               Une expérience client digne des plus grands salons
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
-              Que vous soyez coiffeur indépendant, barbershop urbain ou institut de beauté, Booki s&apos;adapte à votre identité, vos couleurs et votre rythme.
+              Coiffeurs, barbershops ou instituts de beauté : Booki s&apos;adapte à votre identité, vos couleurs et votre rythme.
             </p>
           </Reveal>
 
@@ -660,7 +712,7 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          3. FULL-WIDTH HORIZONTAL COLORED FEATURES SECTION
+          4. FULL-WIDTH HORIZONTAL COLORED FEATURES WITH REAL CROPPED SCREENS
       ====================================================================== */}
       <section id="features" className="pt-16 bg-slate-50/60">
         <Reveal className="max-w-3xl mx-auto px-6 pb-12 text-center space-y-3">
@@ -675,11 +727,10 @@ export default function BookiLandingPage() {
           </p>
         </Reveal>
 
-        {/* Full-Width Stacked Horizontal Bands */}
         <div className="w-full">
-          {/* BAND 1: WHATSAPP & PROMO CODES (EMERALD FULL WIDTH) */}
+          {/* BAND 1: WHATSAPP & PROMO CODES (EMERALD FULL WIDTH + CROPPED PHONE 2) */}
           <div className="w-full bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 text-white py-14 sm:py-16 px-6">
-            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-7 space-y-4">
                 <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs text-[10px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full">
                   <MessageSquare size={12} /> 01 • WhatsApp &amp; Codes Promo
@@ -698,70 +749,34 @@ export default function BookiLandingPage() {
                 </div>
               </div>
 
-              <div className="lg:col-span-5">
-                <div className="bg-white text-slate-900 rounded-3xl p-5 shadow-2xl space-y-3.5 transition-transform duration-300 hover:-translate-y-1">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                        <MessageSquare size={17} />
-                      </div>
-                      <div>
-                        <strong className="text-xs block">Rappel Demain • 10:00</strong>
-                        <span className="text-[10px] text-slate-400">Nadia Gharbi • Brushing &amp; Soin</span>
-                      </div>
-                    </div>
-                    <span className="bg-emerald-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg">
-                      Relancé ✓
-                    </span>
-                  </div>
-                  <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3.5 text-xs text-emerald-950 leading-relaxed">
-                    &ldquo;Bonjour Nadia 👋, petit rappel pour votre rendez-vous chez <strong>Booki Studio</strong> demain à 10:00. À très vite !&rdquo;
-                  </div>
-                  <div className="flex items-center justify-between bg-slate-50 px-3.5 py-2.5 rounded-xl text-xs font-bold">
-                    <span className="flex items-center gap-1.5 text-slate-700">
-                      <Tag size={14} className="text-emerald-600" /> Code : <span className="font-mono">VIP2026</span>
-                    </span>
-                    <span className="text-emerald-600">-20% Actif</span>
-                  </div>
-                </div>
+              <div className="lg:col-span-5 flex justify-center">
+                <CroppedPhone
+                  src="/images/phones-strip.png"
+                  posX="20.5%"
+                  alt="Publicité & WhatsApp sur Booki"
+                  className="w-[215px] sm:w-[235px] rotate-2 hover:rotate-0 transition-transform duration-500"
+                />
               </div>
             </Reveal>
           </div>
 
-          {/* BAND 2: BOOKING 24/7 (ROYAL BLUE FULL WIDTH) */}
+          {/* BAND 2: BOOKING 24/7 (ROYAL BLUE FULL WIDTH + CROPPED PHONES 4 & 5) */}
           <div className="w-full bg-gradient-to-r from-[#1D4ED8] via-[#2563EB] to-indigo-700 text-white py-14 sm:py-16 px-6">
-            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              <div className="lg:col-span-5 order-2 lg:order-1">
-                <div className="bg-white text-slate-900 rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 hover:-translate-y-1">
-                  <div className="relative h-36">
-                    <img src={PHOTOS.beauty} alt="Portail de réservation 24h/24" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 to-transparent" />
-                    <div className="absolute bottom-3 left-4 right-4 text-white flex items-center justify-between">
-                      <div>
-                        <strong className="text-sm block">votre-salon.booki.tn</strong>
-                        <span className="text-[11px] text-blue-200 flex items-center gap-1">
-                          <MapPin size={11} /> Lac 2, Tunis
-                        </span>
-                      </div>
-                      <span className="bg-blue-600 text-[10px] font-bold px-2.5 py-1 rounded-full">
-                        Ouvert 24h/24
-                      </span>
-                    </div>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-900">Soin Kératine &amp; Coupe</span>
-                      <span className="font-black text-[#2563EB]">120.00 TND</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px] font-bold">
-                      <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600">09:30</span>
-                      <span className="px-3 py-1.5 rounded-lg bg-[#2563EB] text-white shadow-xs">11:00</span>
-                      <span className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600">14:30</span>
-                      <span className="ml-auto text-emerald-600 flex items-center gap-1 text-[10px]">
-                        <Calendar size={12} /> .ics + E-mail
-                      </span>
-                    </div>
-                  </div>
+            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+              <div className="lg:col-span-5 order-2 lg:order-1 flex justify-center items-center">
+                <div className="flex items-center justify-center -space-x-10 sm:-space-x-12">
+                  <CroppedPhone
+                    src="/images/phones-strip.png"
+                    posX="59.8%"
+                    alt="Portail de réservation client - Prestations"
+                    className="w-[175px] sm:w-[205px] -rotate-6 hover:rotate-0 hover:z-20 transition-all duration-500"
+                  />
+                  <CroppedPhone
+                    src="/images/phones-strip.png"
+                    posX="79.5%"
+                    alt="Portail de réservation client - Calendrier et Créneaux"
+                    className="w-[175px] sm:w-[205px] rotate-6 translate-y-4 hover:rotate-0 hover:z-20 transition-all duration-500 z-10"
+                  />
                 </div>
               </div>
 
@@ -785,9 +800,9 @@ export default function BookiLandingPage() {
             </Reveal>
           </div>
 
-          {/* BAND 3: STORE & POS (AMBER / ORANGE FULL WIDTH) */}
+          {/* BAND 3: STORE & POS (AMBER / ORANGE FULL WIDTH + CROPPED PHONE 6) */}
           <div className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 text-white py-14 sm:py-16 px-6">
-            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-7 space-y-4">
                 <div className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-xs text-[10px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full">
                   <ShoppingCart size={12} /> 03 • Boutique Click &amp; Collect &amp; Caisse POS
@@ -806,68 +821,34 @@ export default function BookiLandingPage() {
                 </div>
               </div>
 
-              <div className="lg:col-span-5">
-                <div className="bg-white text-slate-900 rounded-3xl p-5 shadow-2xl space-y-3.5 transition-transform duration-300 hover:-translate-y-1">
-                  <div className="flex items-center gap-3.5">
-                    <img
-                      src={PHOTOS.shampoo}
-                      alt="Produit Salon"
-                      className="w-16 h-16 rounded-2xl object-cover shrink-0 border border-slate-100"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <span className="text-[9px] font-extrabold uppercase text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full">
-                        Click &amp; Collect
-                      </span>
-                      <h4 className="text-sm font-black truncate mt-1">
-                        Pack Soin Hydratant Pro
-                      </h4>
-                      <span className="text-xs font-black text-slate-900">80.00 TND</span>
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 rounded-2xl p-3 border border-dashed border-amber-300 flex items-center justify-between text-xs">
-                    <span className="font-mono font-black text-amber-700 flex items-center gap-1.5">
-                      <Ticket size={15} /> BK-8F2A9C10
-                    </span>
-                    <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-full">
-                      Payé au salon
-                    </span>
-                  </div>
-                </div>
+              <div className="lg:col-span-5 flex justify-center">
+                <CroppedPhone
+                  src="/images/phones-strip.png"
+                  posX="99%"
+                  alt="Boutique Click & Collect Booki"
+                  className="w-[215px] sm:w-[235px] -rotate-2 hover:rotate-0 transition-transform duration-500"
+                />
               </div>
             </Reveal>
           </div>
 
-          {/* BAND 4: MANAGE SALON & PROFITABILITY (INDIGO / VIOLET FULL WIDTH) */}
+          {/* BAND 4: MANAGE SALON & PROFITABILITY (INDIGO / VIOLET FULL WIDTH + CROPPED PHONES 1 & 3) */}
           <div className="w-full bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 text-white py-14 sm:py-16 px-6">
-            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              <div className="lg:col-span-5 order-2 lg:order-1">
-                <div className="bg-white text-slate-900 rounded-3xl p-5 shadow-2xl space-y-3.5 transition-transform duration-300 hover:-translate-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold uppercase text-indigo-600 flex items-center gap-1">
-                      <Wallet size={13} /> Bénéfice Net du Mois
-                    </span>
-                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full">
-                      +24% vs mois dernier
-                    </span>
-                  </div>
-                  <div className="text-3xl font-black text-slate-900">4,350.00 TND</div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-[11px] font-bold text-slate-500">
-                      <span>Seuil de rentabilité (Point Mort)</span>
-                      <span className="text-emerald-600">100% couvert</span>
-                    </div>
-                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="bg-emerald-500 h-full w-full" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
-                    <div className="bg-slate-50 p-2.5 rounded-xl font-bold text-slate-700">
-                      📦 Stock : Déduit auto
-                    </div>
-                    <div className="bg-slate-50 p-2.5 rounded-xl font-bold text-slate-700">
-                      👥 Équipe : 4/4 Payés
-                    </div>
-                  </div>
+            <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+              <div className="lg:col-span-5 order-2 lg:order-1 flex justify-center items-center">
+                <div className="flex items-center justify-center -space-x-10 sm:-space-x-12">
+                  <CroppedPhone
+                    src="/images/phones-strip.png"
+                    posX="1%"
+                    alt="Tableau de bord Booki"
+                    className="w-[175px] sm:w-[205px] -rotate-6 hover:rotate-0 hover:z-20 transition-all duration-500"
+                  />
+                  <CroppedPhone
+                    src="/images/phones-strip.png"
+                    posX="40.2%"
+                    alt="Dépenses & Rentabilité Booki"
+                    className="w-[175px] sm:w-[205px] rotate-6 translate-y-4 hover:rotate-0 hover:z-20 transition-all duration-500 z-10"
+                  />
                 </div>
               </div>
 
@@ -894,7 +875,7 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          4. TESTIMONIALS
+          5. TESTIMONIALS
       ====================================================================== */}
       <section id="testimonials" className="py-20 px-6 bg-white">
         <div className="max-w-5xl mx-auto space-y-12">
@@ -950,7 +931,7 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          5. PRICING
+          6. PRICING
       ====================================================================== */}
       <section id="pricing" className="py-20 px-6 bg-slate-50/70">
         <div className="max-w-5xl mx-auto space-y-12">
@@ -1085,7 +1066,7 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          6. FAQ ACCORDION
+          7. FAQ ACCORDION
       ====================================================================== */}
       <section id="faq" className="py-20 px-6 bg-white">
         <div className="max-w-3xl mx-auto space-y-10">
@@ -1127,7 +1108,7 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          7. FINAL ORBITAL CTA BANNER
+          8. FINAL ORBITAL CTA BANNER
       ====================================================================== */}
       <section className="relative bg-gradient-to-b from-[#3B82F6] via-[#2563EB] to-[#1D4ED8] py-24 px-6 text-white overflow-hidden">
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -1161,7 +1142,7 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          8. FOOTER
+          9. FOOTER
       ====================================================================== */}
       <footer className="bg-slate-950 text-slate-400 py-10 px-6 text-xs">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -1172,6 +1153,7 @@ export default function BookiLandingPage() {
             <span className="text-slate-500 font-normal ml-2">© 2026 Booki Tunisia.</span>
           </div>
           <div className="flex items-center gap-6">
+            <a href="#ecrans" className="hover:text-white transition">Aperçu App</a>
             <a href="#features" className="hover:text-white transition">Fonctionnalités</a>
             <a href="#pricing" className="hover:text-white transition">Tarifs</a>
             <a href="#faq" className="hover:text-white transition">FAQ</a>
