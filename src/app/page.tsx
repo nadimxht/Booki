@@ -683,15 +683,7 @@ export default function BookiLandingPage() {
               >
                 Mensuel
               </button>
-              <button
-                type="button"
-                onClick={() => setBillingCycle("annual")}
-                className={`px-4 py-1.5 rounded-lg transition cursor-pointer ${
-                  billingCycle === "annual" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500"
-                }`}
-              >
-                Annuel (-20%)
-              </button>
+              
             </div>
           </Reveal>
 
@@ -702,7 +694,7 @@ export default function BookiLandingPage() {
                   <h3 className="font-bold text-sm text-slate-900">Plan Solo</h3>
                   <div className="flex items-baseline gap-1">
                     <span className="text-3xl font-black text-slate-900">
-                      {billingCycle === "annual" ? "40" : "50"} TND
+                      {billingCycle === "annual" ? "40" : "30"} TND
                     </span>
                     <span className="text-xs text-slate-400">/ mois</span>
                   </div>
@@ -736,7 +728,7 @@ export default function BookiLandingPage() {
                   </div>
                   <div className="flex items-baseline gap-1">
                     <span className="text-4xl font-black text-white">
-                      {billingCycle === "annual" ? "80" : "100"} TND
+                      {billingCycle === "annual" ? "80" : "60"} TND
                     </span>
                     <span className="text-xs text-blue-100">/ mois</span>
                   </div>
