@@ -511,9 +511,7 @@ function BookingPortalContent() {
             </div>
 
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-1.5 bg-white/20 border border-white/30 text-white text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider backdrop-blur-md">
-                <Sparkles size={11} /> Réservation en ligne vérifiée
-              </div>
+              
               <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white">
                 {settings.name}
               </h1>
