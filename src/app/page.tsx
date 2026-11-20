@@ -146,7 +146,7 @@ const APP_GALLERY = [
 function PhoneScreen({
   src,
   alt,
-  rotated = true,
+  rotated = false,
   className = "",
 }: {
   src: string;
@@ -156,20 +156,20 @@ function PhoneScreen({
 }) {
   return (
     <div
-      className={`relative aspect-[9/18.2] rounded-[34px] overflow-hidden bg-white shadow-[0_25px_55px_-12px_rgba(15,23,42,0.45)] ring-1 ring-black/15 ${className}`}
+      className={`relative aspect-[9/18.2] rounded-[28px] overflow-hidden bg-white shadow-[0_25px_55px_-12px_rgba(15,23,42,0.45)] ring-1 ring-black/15 ${className}`}
     >
       {rotated ? (
         <img
           src={src}
           alt={alt}
           style={{ transform: "translate(-50%, -50%) rotate(90deg) scale(1.03)" }}
-          className="absolute top-1/2 left-1/2 w-[202%] max-w-none h-[50%] object-cover object-[50%_46%]"
-        />
+          className={`relative     rounded-[36px] overflow-hidden shadow-[0_0_45px_6px_rgba(15,23,42,0.32),0_0_15px_2px_rgba(15,23,42,0.18)] ${className}`}
+    />
       ) : (
         <img
           src={src}
           alt={alt}
-          className="w-full h-full object-cover object-[47.5%_50%] scale-[1.05]"
+          className="w-full h-full object-cover object-[50%_50%] scale-[1]"
         />
       )}
     </div>
@@ -419,196 +419,20 @@ export default function BookiLandingPage() {
           <div className="relative flex flex-col lg:block items-center">
             {/* 1. DESKTOP WINDOW */}
             <div
-              className={`w-full max-w-4xl mx-auto bg-slate-900 rounded-2xl p-2 sm:p-2.5 shadow-[0_30px_80px_-15px_rgba(15,23,42,0.45)] border border-slate-700/80 ${
+              className={`w-full max-w-4xl max-h-200 mx-auto bg-slate-900 rounded-2xl p-2 sm:p-2.5 shadow-[0_30px_80px_-15px_rgba(15,23,42,0.45)] border border-slate-700/80 ${
                 mobileDevice === "desktop" ? "block" : "hidden lg:block"
               }`}
             >
-              <div className="flex items-center justify-between px-3 pb-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                </div>
-                <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-3 py-0.5 rounded-full">
-                  app.booki.tn/admin
-                </span>
-                <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> En direct
-                </span>
-              </div>
-
-              <div className="bg-white rounded-xl overflow-hidden">
-                <div className="border-b border-slate-100 px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-3 bg-white">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-[#2563EB] text-white flex items-center justify-center">
-                      <Scissors size={12} />
-                    </div>
-                    <span className="font-bold text-xs text-slate-900">Booki Admin</span>
-                  </div>
-
-                  <div className="flex items-center gap-1 text-[11px] font-semibold flex-wrap">
-                    {[
-                      { id: "planning", label: "Planning" },
-                      { id: "pos", label: "Boutique POS" },
-                      { id: "finance", label: "Rentabilité" },
-                      { id: "whatsapp", label: "WhatsApp" },
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setActiveTab(tab.id as PreviewTab)}
-                        className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                          activeTab === tab.id
-                            ? "bg-blue-50 text-[#2563EB] font-bold"
-                            : "text-slate-500 hover:text-slate-900"
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="hidden sm:flex items-center gap-2">
-                    <span className="text-[10px] font-semibold text-slate-400">Divine Curls</span>
-                    <div className="w-7 h-7 rounded-full bg-blue-100 text-[#2563EB] font-bold text-[10px] flex items-center justify-center">
-                      DC
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-6 bg-[#F8FAFC] space-y-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <h2 className="text-sm sm:text-base font-bold text-slate-900">
-                        {currentPreview.title}
-                      </h2>
-                      <p className="text-[11px] text-slate-500">{currentPreview.subtitle}</p>
-                    </div>
-                    <span className="bg-[#2563EB] text-white text-[10px] sm:text-[11px] font-semibold px-3 py-2 rounded-lg flex items-center gap-1 shadow-xs shrink-0">
-                      <Plus size={12} /> {currentPreview.cta}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {currentPreview.kpis.map((kpi, i) => (
-                      <div
-                        key={i}
-                        className="bg-white p-3 rounded-xl border border-slate-100 shadow-2xs space-y-1 transition hover:-translate-y-0.5"
-                      >
-                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full inline-block ${kpi.tone}`}>
-                          {kpi.label}
-                        </span>
-                        <div className="text-xs sm:text-sm font-black text-slate-900">{kpi.value}</div>
-                        <div className="text-[10px] text-slate-400">{kpi.sub}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:pb-4">
-                    <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 p-4 shadow-2xs">
-                      <div className="divide-y divide-slate-50 text-[11px]">
-                        {currentPreview.rows.map((row, idx) => (
-                          <div key={idx} className="py-2.5 flex items-center justify-between gap-2">
-                            <div className="font-semibold text-slate-800 truncate">{row.col1}</div>
-                            <div className="text-slate-500 hidden sm:block truncate">{row.col2}</div>
-                            <div className="text-slate-400 truncate">{row.col3}</div>
-                            <div className="font-bold text-slate-900 shrink-0">{row.col4}</div>
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 shrink-0">
-                              {row.badge}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="bg-gradient-to-br from-[#2563EB] to-[#4F86F7] rounded-xl p-4 text-white flex flex-col justify-between shadow-md">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-blue-100">
-                          {currentPreview.highlightLabel}
-                        </span>
-                        <Sparkles size={14} className="text-blue-200" />
-                      </div>
-                      <div className="my-2">
-                        <div className="text-2xl font-black">{currentPreview.highlightValue}</div>
-                        <div className="text-[10px] text-blue-100">{currentPreview.highlightSub}</div>
-                      </div>
-                      <div className="w-full bg-white/20 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className="bg-white h-full transition-all duration-500"
-                          style={{ width: `${currentPreview.progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <img src={"/images/bookk.png"} alt="Desktop" />
             </div>
 
             {/* 2. TABLET MOCKUP (Floating Left) */}
             <div
-              className={`w-full max-w-[320px] lg:w-[270px] lg:absolute lg:left-0 lg:-bottom-6 z-30 bg-slate-900 rounded-[26px] p-2.5 shadow-2xl border-2 border-slate-700/80 lg:animate-float-slow ${
+              className={`w-full max-w-2xl mx-auto lg:w-[470px] lg:absolute lg:-bottom-5 z-30 bg-slate-900 rounded-[20px] p-2.5 shadow-2xl border-2 border-slate-700/80 lg:animate-float-slow ${
                 mobileDevice === "tablet" ? "block mx-auto" : "hidden lg:block"
               }`}
             >
-              <div className="flex items-center justify-center pb-1.5">
-                <span className="w-8 h-1 rounded-full bg-slate-700" />
-              </div>
-              <div className="bg-white rounded-[18px] overflow-hidden text-left">
-                <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-3 text-white flex items-center justify-between">
-                  <div>
-                    <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-100 block">
-                      Tablette • Boutique
-                    </span>
-                    <strong className="text-xs font-black">Vente Produits</strong>
-                  </div>
-                  <span className="bg-white/20 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                    Click &amp; Collect
-                  </span>
-                </div>
-
-                <div className="p-3 bg-slate-50 space-y-2.5">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-white rounded-xl p-2 border border-slate-100 space-y-1.5">
-                      <img
-                        src={PHOTOS.shampoo}
-                        alt="Shampoing Pro"
-                        className="w-full h-16 object-cover rounded-lg"
-                      />
-                      <p className="text-[10px] font-bold text-slate-900 truncate">Shampoing Pro</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black text-amber-600">35 TND</span>
-                        <span className="w-4 h-4 rounded bg-slate-900 text-white text-[10px] flex items-center justify-center">
-                          +
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-xl p-2 border border-slate-100 space-y-1.5">
-                      <img
-                        src={PHOTOS.serum}
-                        alt="Sérum Éclat"
-                        className="w-full h-16 object-cover rounded-lg"
-                      />
-                      <p className="text-[10px] font-bold text-slate-900 truncate">Sérum Éclat</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black text-amber-600">45 TND</span>
-                        <span className="w-4 h-4 rounded bg-slate-900 text-white text-[10px] flex items-center justify-center">
-                          +
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-xl p-2.5 border border-slate-200/80 flex items-center justify-between text-[10px]">
-                    <span className="font-mono font-black text-indigo-600 flex items-center gap-1">
-                      <Ticket size={12} /> BK-8F2A9C
-                    </span>
-                    <span className="bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
-                      Prêt
-                    </span>
-                  </div>
-                </div>
-              </div>
+             <img src={"/images/stt.png"} alt="Desktop" />
             </div>
 
             {/* 3. REAL PHONE SCREENSHOT (Planning & Réservations - Floating Right) */}
@@ -628,48 +452,6 @@ export default function BookiLandingPage() {
         </div>
       </div>
 
-      {/* =====================================================================
-          2. HIGH-RES 6-SCREEN APP GALLERY
-      ====================================================================== */}
-      <section id="ecrans" className="py-18 px-4 sm:px-6 bg-white border-b border-slate-100">
-        <div className="max-w-7xl mx-auto space-y-10">
-          <Reveal className="text-center space-y-2 max-w-2xl mx-auto">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
-              Aperçu Réel de l&apos;Application
-            </span>
-            <h2 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
-              Toute votre gestion et votre vitrine client dans votre poche
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500">
-              Découvrez les vrais écrans utilisés chaque jour par les salons et leurs clients.
-            </p>
-          </Reveal>
-
-          <Reveal delay={100}>
-            <div className="flex lg:grid lg:grid-cols-6 gap-5 overflow-x-auto lg:overflow-visible pb-4 lg:pb-0 snap-x snap-mandatory px-2">
-              {APP_GALLERY.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="snap-center shrink-0 w-[185px] lg:w-full flex flex-col items-center space-y-3 group"
-                >
-                  <PhoneScreen
-                    src={item.src}
-                    alt={item.label}
-                    className="w-full group-hover:-translate-y-2 transition-transform duration-300"
-                  />
-                  <div className="text-center">
-                    <h3 className="text-xs font-black text-slate-900">{item.label}</h3>
-                    <p className="text-[10px] text-slate-400 font-medium">{item.sub}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="lg:hidden text-center text-[11px] font-bold text-slate-400 mt-1">
-              ← Glissez pour parcourir les 6 écrans →
-            </p>
-          </Reveal>
-        </div>
-      </section>
 
       {/* =====================================================================
           3. SALON UNIVERSES
