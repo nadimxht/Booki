@@ -8,21 +8,28 @@ import {
   MessageSquare,
   Check,
   Plus,
+  Copy,
   X,
   Menu,
-  Sparkles,
   TrendingUp,
-  Scissors,
   CheckCircle2,
-  Monitor,
-  Tablet,
-  Smartphone,
-  Ticket,
   ArrowRight,
   ShieldCheck,
   Zap,
-  Star,
+  Phone,
+  Send,
+  Clock,
+  Video,
+  Mail,
 } from "lucide-react";
+
+// Replace with your real WhatsApp number (international format without +) and email
+  
+  
+  const FOUNDER_WHATSAPP = "+21696738498"; // Replace with your WhatsApp number
+  const FOUNDER_EMAIL = "nadimchihaoui0@gmail.com"; // Replace with your email
+
+ 
 
 const PHOTOS = {
   salon:
@@ -134,15 +141,6 @@ const DESKTOP_TAB_DATA: Record<
   },
 };
 
-const APP_GALLERY = [
-  { src: "/images/screen-dashboard.png", label: "Tableau de Bord", sub: "Chiffre d'affaires & KPIs" },
-  { src: "/images/screen-whatsapp.png", label: "Publicité & WhatsApp", sub: "Relances & annonces 1-clic" },
-  { src: "/images/screen-expenses.png", label: "Rentabilité Nette", sub: "Point mort & charges" },
-  { src: "/images/screen-book-services.png", label: "Portail RDV 24/7", sub: "Choix des prestations" },
-  { src: "/images/screen-book-calendar.png", label: "Créneaux en Direct", sub: "Matin & Après-midi" },
-  { src: "/images/screen-store.png", label: "Boutique Salon", sub: "Panier & Click & Collect" },
-];
-
 function PhoneScreen({
   src,
   alt,
@@ -163,8 +161,8 @@ function PhoneScreen({
           src={src}
           alt={alt}
           style={{ transform: "translate(-50%, -50%) rotate(90deg) scale(1.03)" }}
-          className={`relative     rounded-[36px] overflow-hidden shadow-[0_0_45px_6px_rgba(15,23,42,0.32),0_0_15px_2px_rgba(15,23,42,0.18)] ${className}`}
-    />
+          className={`relative rounded-[36px] overflow-hidden shadow-[0_0_45px_6px_rgba(15,23,42,0.32),0_0_15px_2px_rgba(15,23,42,0.18)] ${className}`}
+        />
       ) : (
         <img
           src={src}
@@ -224,7 +222,36 @@ export default function BookiLandingPage() {
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const currentPreview = DESKTOP_TAB_DATA[activeTab];
+  const [contactName, setContactName] = useState("");
+  const [salonName, setSalonName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactMessage, setContactMessage] = useState("");
+  const [copiedTemplate, setCopiedTemplate] = useState(false);
+
+  const whatsappTemplateMessage = [
+    "Bonjour Nadim 👋",
+    "Je souhaite réserver une démo de 15 min avec Booki :",
+    `• Nom : ${contactName.trim() || "[Votre nom]"}`,
+    `• Salon : ${salonName.trim() || "[Nom de votre salon]"}`,
+    `• Téléphone : ${contactPhone.trim() || "[Votre numéro WhatsApp]"}`,
+    contactMessage.trim() ? `• Note : ${contactMessage.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const whatsappHref = `https://wa.me/${FOUNDER_WHATSAPP}?text=${encodeURIComponent(
+    whatsappTemplateMessage
+  )}`;
+
+  const handleCopyTemplate = async () => {
+    try {
+      await navigator.clipboard.writeText(whatsappTemplateMessage);
+      setCopiedTemplate(true);
+      setTimeout(() => setCopiedTemplate(false), 2000);
+    } catch {
+      setCopiedTemplate(false);
+    }
+  };
 
   const faqs = [
     {
@@ -285,20 +312,17 @@ export default function BookiLandingPage() {
         {/* Top Navbar */}
         <header className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between text-white relative z-50">
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-xl bg-white text-[#2563EB] flex items-center justify-center font-black shadow-sm group-hover:scale-105 transition">
-              <Scissors size={17} />
-            </div>
             <span className="font-extrabold text-lg tracking-tight text-white">
               Booki<span className="text-blue-200">.tn</span>
             </span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-8 text-xs font-medium text-white/90">
-            <a href="#ecrans" className="hover:text-white transition">Aperçu App</a>
             <a href="#univers" className="hover:text-white transition">Métiers</a>
             <a href="#features" className="hover:text-white transition">Fonctionnalités</a>
             <a href="#pricing" className="hover:text-white transition">Tarifs</a>
             <a href="#faq" className="hover:text-white transition">FAQ</a>
+            <a href="#contact" className="hover:text-white transition">Démo 15 min</a>
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
@@ -329,11 +353,11 @@ export default function BookiLandingPage() {
         {/* Mobile Dropdown */}
         {mobileMenuOpen && (
           <div className="md:hidden mx-6 mt-2 bg-white rounded-2xl p-5 shadow-2xl border border-slate-100 space-y-3 text-xs font-semibold text-slate-800 relative z-50 animate-in fade-in zoom-in-95">
-            <a href="#ecrans" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Aperçu App</a>
             <a href="#univers" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Métiers</a>
             <a href="#features" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Fonctionnalités</a>
             <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">Tarifs</a>
             <a href="#faq" onClick={() => setMobileMenuOpen(false)} className="block py-1.5">FAQ</a>
+            <a href="#contact" onClick={() => setMobileMenuOpen(false)} className="block py-1.5 text-[#2563EB]">Démo 15 min avec le fondateur</a>
             <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
               <Link href="/login" className="w-full py-2.5 text-center rounded-xl bg-slate-100 text-slate-800">
                 Connexion
@@ -347,9 +371,6 @@ export default function BookiLandingPage() {
 
         {/* Hero Copy */}
         <div className="max-w-3xl mx-auto px-6 pt-10 pb-10 text-center text-white space-y-5 relative z-10 animate-hero-in">
-          <span className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 backdrop-blur-md text-white text-[11px] font-bold px-3.5 py-1.5 rounded-full">
-            <Sparkles size={13} /> Conçu pour les Salons, Barbershops &amp; Spas en Tunisie
-          </span>
           <h1 className="text-4xl sm:text-5xl md:text-[54px] font-black tracking-tight leading-[1.08]">
             Remplissez votre agenda. <br className="hidden sm:inline" />
             Libérez vos mains.
@@ -367,10 +388,10 @@ export default function BookiLandingPage() {
               <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
             </Link>
             <a
-              href="#features"
+              href="#contact"
               className="bg-white/15 hover:bg-white/25 backdrop-blur-md border border-white/25 text-white text-xs font-bold px-6 py-4 rounded-xl transition"
             >
-              Explorer les fonctionnalités
+              Parler au fondateur (15 min)
             </a>
           </div>
 
@@ -381,63 +402,30 @@ export default function BookiLandingPage() {
           </div>
         </div>
 
-        {/* Mobile Device Selector (< lg) */}
-        <div className="lg:hidden flex justify-center px-4 mb-5 relative z-30">
-          <div className="inline-flex bg-slate-950/25 backdrop-blur-md p-1 rounded-2xl border border-white/20 text-white text-xs font-bold gap-1">
-            <button
-              type="button"
-              onClick={() => setMobileDevice("desktop")}
-              className={`px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
-                mobileDevice === "desktop" ? "bg-white text-blue-700 shadow-sm" : "text-white/90"
-              }`}
-            >
-              <Monitor size={14} /> Ordinateur
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileDevice("tablet")}
-              className={`px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
-                mobileDevice === "tablet" ? "bg-white text-blue-700 shadow-sm" : "text-white/90"
-              }`}
-            >
-              <Tablet size={14} /> Tablette
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileDevice("phone")}
-              className={`px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
-                mobileDevice === "phone" ? "bg-white text-blue-700 shadow-sm" : "text-white/90"
-              }`}
-            >
-              <Smartphone size={14} /> Téléphone
-            </button>
-          </div>
-        </div>
-
         {/* MULTI-DEVICE SHOWCASE */}
         <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-20 lg:pb-12 animate-hero-in">
           <div className="relative flex flex-col lg:block items-center">
             {/* 1. DESKTOP WINDOW */}
             <div
-              className={`w-full max-w-4xl max-h-200 mx-auto bg-slate-900 rounded-2xl p-2 sm:p-2.5 shadow-[0_30px_80px_-15px_rgba(15,23,42,0.45)] border border-slate-700/80 ${
+              className={`w-full max-w-4xl max-h-150 mx-auto bg-slate-900 rounded-2xl p-2 sm:p-2.5 shadow-[0_30px_80px_-15px_rgba(15,23,42,0.45)] border border-slate-700/80 ${
                 mobileDevice === "desktop" ? "block" : "hidden lg:block"
               }`}
             >
-            <img src={"/images/bookk.png"} alt="Desktop" />
+              <img src={"/images/bookk.png"} alt="Desktop" />
             </div>
 
             {/* 2. TABLET MOCKUP (Floating Left) */}
             <div
-              className={`w-full max-w-2xl mx-auto lg:w-[470px] lg:absolute lg:-bottom-5 z-30 bg-slate-900 rounded-[20px] p-2.5 shadow-2xl border-2 border-slate-700/80 lg:animate-float-slow ${
+              className={`w-full max-w-2xl mx-auto lg:w-[470px] lg:absolute lg:-bottom-10 z-30 bg-slate-900 rounded-[20px] p-2.5 shadow-2xl border-2 border-slate-700/80 lg:animate-float-slow ${
                 mobileDevice === "tablet" ? "block mx-auto" : "hidden lg:block"
               }`}
             >
-             <img src={"/images/stt.png"} alt="Desktop" />
+              <img src={"/images/stt.png"} alt="Desktop" />
             </div>
 
             {/* 3. REAL PHONE SCREENSHOT (Planning & Réservations - Floating Right) */}
             <div
-              className={`lg:absolute lg:right-0 lg:-bottom-10 z-30 lg:animate-float-alt ${
+              className={`lg:absolute lg:right-0 lg:-bottom-20 z-30 lg:animate-float-alt ${
                 mobileDevice === "phone" ? "block mx-auto" : "hidden lg:block"
               }`}
             >
@@ -451,7 +439,6 @@ export default function BookiLandingPage() {
           </div>
         </div>
       </div>
-
 
       {/* =====================================================================
           3. SALON UNIVERSES
@@ -530,7 +517,7 @@ export default function BookiLandingPage() {
         </Reveal>
 
         <div className="w-full">
-          {/* BAND 1: WHATSAPP & PROMO CODES (EMERALD FULL WIDTH) */}
+          {/* BAND 1: WHATSAPP & PROMO CODES */}
           <div className="w-full bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 text-white py-14 sm:py-16 px-6">
             <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-7 space-y-4">
@@ -561,7 +548,7 @@ export default function BookiLandingPage() {
             </Reveal>
           </div>
 
-          {/* BAND 2: BOOKING 24/7 (ROYAL BLUE FULL WIDTH) */}
+          {/* BAND 2: BOOKING 24/7 */}
           <div className="w-full bg-gradient-to-r from-[#1D4ED8] via-[#2563EB] to-indigo-700 text-white py-14 sm:py-16 px-6">
             <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-5 order-2 lg:order-1 flex justify-center items-center">
@@ -599,7 +586,7 @@ export default function BookiLandingPage() {
             </Reveal>
           </div>
 
-          {/* BAND 3: STORE & POS (AMBER / ORANGE FULL WIDTH) */}
+          {/* BAND 3: STORE & POS */}
           <div className="w-full bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 text-white py-14 sm:py-16 px-6">
             <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-7 space-y-4">
@@ -630,7 +617,7 @@ export default function BookiLandingPage() {
             </Reveal>
           </div>
 
-          {/* BAND 4: MANAGE SALON & PROFITABILITY (INDIGO / VIOLET FULL WIDTH) */}
+          {/* BAND 4: MANAGE SALON & PROFITABILITY */}
           <div className="w-full bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 text-white py-14 sm:py-16 px-6">
             <Reveal className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-5 order-2 lg:order-1 flex justify-center items-center">
@@ -666,62 +653,6 @@ export default function BookiLandingPage() {
                 </div>
               </div>
             </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* =====================================================================
-          5. TESTIMONIALS
-      ====================================================================== */}
-      <section id="testimonials" className="py-20 px-6 bg-white">
-        <div className="max-w-5xl mx-auto space-y-12">
-          <Reveal className="text-center space-y-3">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#2563EB]">
-              Ils Utilisent Booki au Quotidien
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-              Des résultats concrets dès la première semaine
-            </h2>
-          </Reveal>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                quote:
-                  "Avant, je passais ma soirée à répondre aux DM Instagram. Aujourd'hui mes clients réservent seuls à 23h et mon agenda du lendemain est plein au réveil.",
-                author: "Youssef Ben Amor",
-                role: "The Art Barbershop • La Marsa",
-              },
-              {
-                quote:
-                  "Voir exactement ce que me coûtent les produits par prestation et suivre le paiement de mon équipe dans la même app m'a fait gagner des heures chaque semaine.",
-                author: "Sarra Khemir",
-                role: "Sarra K Beauty Lounge • Sousse",
-              },
-              {
-                quote:
-                  "Nos ventes de shampoings et soins ont augmenté grâce au Click & Collect. Les clientes commandent en ligne et récupèrent au comptoir avec leur code.",
-                author: "Mehdi Trabelsi",
-                role: "Urban Cut Studio • Lac 2 Tunis",
-              },
-            ].map((item, idx) => (
-              <Reveal key={idx} delay={idx * 100}>
-                <div className="h-full bg-[#F8FAFC] rounded-3xl p-6 border border-slate-100 flex flex-col justify-between space-y-6 hover:shadow-md hover:-translate-y-1 transition duration-300">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-1 text-amber-400">
-                      {[1, 2, 3, 4, 5].map((s) => (
-                        <Star key={s} size={13} fill="currentColor" />
-                      ))}
-                    </div>
-                    <p className="text-xs text-slate-600 leading-relaxed">&ldquo;{item.quote}&rdquo;</p>
-                  </div>
-                  <div>
-                    <div className="font-bold text-xs text-slate-900">{item.author}</div>
-                    <div className="text-[11px] text-slate-400">{item.role}</div>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
           </div>
         </div>
       </section>
@@ -764,14 +695,14 @@ export default function BookiLandingPage() {
             </div>
           </Reveal>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
             <Reveal delay={0}>
               <div className="bg-white rounded-3xl p-7 border border-slate-200/80 space-y-6 hover:shadow-lg transition">
                 <div className="space-y-2">
                   <h3 className="font-bold text-sm text-slate-900">Plan Solo</h3>
                   <div className="flex items-baseline gap-1">
                     <span className="text-3xl font-black text-slate-900">
-                      {billingCycle === "annual" ? "39" : "49"} TND
+                      {billingCycle === "annual" ? "40" : "50"} TND
                     </span>
                     <span className="text-xs text-slate-400">/ mois</span>
                   </div>
@@ -782,7 +713,7 @@ export default function BookiLandingPage() {
                   <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> 1 Collaborateur</li>
                   <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Lien de réservation 24h/24</li>
                   <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Rappels WhatsApp &amp; E-mail</li>
-                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Agenda PWA mobile</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Portail boutique en ligne</li>
                 </ul>
 
                 <Link
@@ -805,7 +736,7 @@ export default function BookiLandingPage() {
                   </div>
                   <div className="flex items-baseline gap-1">
                     <span className="text-4xl font-black text-white">
-                      {billingCycle === "annual" ? "79" : "99"} TND
+                      {billingCycle === "annual" ? "80" : "100"} TND
                     </span>
                     <span className="text-xs text-blue-100">/ mois</span>
                   </div>
@@ -818,6 +749,8 @@ export default function BookiLandingPage() {
                   <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Marges &amp; stock consommables</li>
                   <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Bilan financier, salaires &amp; CSV</li>
                   <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Support prioritaire WhatsApp</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Support 24/7</li>
+                  <li className="flex items-center gap-2.5"><Check size={14} className="text-white" /> Personnalisation avancée</li>
                 </ul>
 
                 <Link
@@ -825,35 +758,6 @@ export default function BookiLandingPage() {
                   className="block w-full py-3.5 rounded-xl bg-white hover:bg-blue-50 text-[#2563EB] text-center text-xs font-bold shadow-md transition"
                 >
                   Démarrer 14 jours gratuits
-                </Link>
-              </div>
-            </Reveal>
-
-            <Reveal delay={200}>
-              <div className="bg-white rounded-3xl p-7 border border-slate-200/80 space-y-6 hover:shadow-lg transition">
-                <div className="space-y-2">
-                  <h3 className="font-bold text-sm text-slate-900">Multi-Salons</h3>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-black text-slate-900">
-                      {billingCycle === "annual" ? "149" : "180"} TND
-                    </span>
-                    <span className="text-xs text-slate-400">/ mois</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500">Pour les grands centres esthétiques et réseaux.</p>
-                </div>
-
-                <ul className="space-y-3 text-xs text-slate-600 border-t border-slate-100 pt-5">
-                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Collaborateurs illimités</li>
-                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Gestion multi-adresses</li>
-                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Codes promo &amp; campagnes avancées</li>
-                  <li className="flex items-center gap-2.5"><Check size={14} className="text-[#2563EB]" /> Accompagnement sur place (Tunis)</li>
-                </ul>
-
-                <Link
-                  href="/signup"
-                  className="block w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-center text-xs font-semibold transition"
-                >
-                  Créer mon compte
                 </Link>
               </div>
             </Reveal>
@@ -903,8 +807,183 @@ export default function BookiLandingPage() {
         </div>
       </section>
 
+     {/* =====================================================================
+          8. FOUNDER 15-MIN DEMO WHATSAPP TEMPLATE
+      ====================================================================== */}
+      <section id="contact" className="py-24 px-6 bg-white border-t border-slate-100">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-10 items-start">
+          {/* Left Column: Clean Editorial Pitch + Direct Contact Box */}
+          <Reveal className="lg:col-span-5 space-y-8">
+            <div className="space-y-4">
+              <span className="inline-block bg-blue-50 text-[#2563EB] text-[11px] font-bold px-3.5 py-1.5 rounded-full">
+                Pour démarrer avec Booki
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
+                Réservez une démo
+              </h2>
+              <p className="text-sm text-slate-500">
+                15 minutes, par téléphone ou WhatsApp avec le fondateur.
+              </p>
+            </div>
+
+            {/* Numbered Steps */}
+            <ol className="space-y-4">
+              {[
+                "Remplissez votre modèle en 30 secondes",
+                "Envoyez-le en 1 clic sur WhatsApp",
+                "Démo de 15 min sans engagement",
+              ].map((step, index) => (
+                <li key={step} className="flex items-center gap-3.5">
+                  <span className="w-7 h-7 rounded-full bg-[#2563EB] text-white text-xs font-extrabold flex items-center justify-center shrink-0 shadow-xs">
+                    {index + 1}
+                  </span>
+                  <span className="text-xs sm:text-sm font-medium text-slate-800">
+                    {step}
+                  </span>
+                </li>
+              ))}
+            </ol>
+
+            {/* Direct Contact Card */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 space-y-3">
+              <p className="text-xs font-bold text-slate-900">
+                Vous préférez nous contacter directement ?
+              </p>
+              <a
+                href={`mailto:${FOUNDER_EMAIL}`}
+                className="flex items-center gap-2.5 text-xs font-bold text-[#2563EB] hover:underline"
+              >
+                <Mail size={15} className="shrink-0" />
+                <span>{FOUNDER_EMAIL}</span>
+              </a>
+              <div className="pt-2.5 border-t border-slate-100 flex items-center gap-2.5 text-xs font-medium text-slate-500">
+                <Phone size={14} className="text-slate-400 shrink-0" />
+                <span>+216 96 738 498</span>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* Right Column: Interactive WhatsApp Message Template Card */}
+          <Reveal delay={100} className="lg:col-span-7">
+            <div className="rounded-3xl bg-slate-50/80 border border-slate-200/80 p-6 sm:p-8 space-y-5">
+              <div className="flex items-center justify-between gap-2 pb-4 border-b border-slate-200/70">
+                <p className="text-xs text-slate-500">
+                  Modèle WhatsApp prêt à envoyer • Réponse sous 2h en semaine.
+                </p>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-2.5 py-1 rounded-full shrink-0">
+                  <MessageSquare size={12} /> WhatsApp
+                </span>
+              </div>
+
+              {/* Template Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="demo-name"
+                    className="block text-xs font-bold text-slate-800"
+                  >
+                    Votre nom
+                  </label>
+                  <input
+                    id="demo-name"
+                    type="text"
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                    placeholder="Ex: Sarra Ben Ali"
+                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200/90 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-600/10 transition"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="demo-phone"
+                    className="block text-xs font-bold text-slate-800"
+                  >
+                    Téléphone (WhatsApp)
+                  </label>
+                  <input
+                    id="demo-phone"
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    placeholder="-- --- ---"
+                    className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200/90 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-600/10 transition"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="demo-salon"
+                  className="block text-xs font-bold text-slate-800"
+                >
+                  Nom de votre salon
+                </label>
+                <input
+                  id="demo-salon"
+                  type="text"
+                  value={salonName}
+                  onChange={(e) => setSalonName(e.target.value)}
+                  placeholder="Ex: Studio Élégance, Barber House..."
+                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200/90 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-600/10 transition"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="demo-message"
+                  className="block text-xs font-bold text-slate-800"
+                >
+                  Horaires ou note <span className="font-normal text-slate-400">(optionnel)</span>
+                </label>
+                <input
+                  id="demo-message"
+                  type="text"
+                  value={contactMessage}
+                  onChange={(e) => setContactMessage(e.target.value)}
+                  placeholder="Ex: Disponible demain après 15h..."
+                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200/90 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-600/10 transition"
+                />
+              </div>
+
+              {/* Live WhatsApp Message Template Bubble */}
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-600">
+                    Aperçu du message WhatsApp
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyTemplate}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#2563EB] hover:underline cursor-pointer"
+                  >
+                    <Copy size={12} />
+                    {copiedTemplate ? "Copié !" : "Copier le texte"}
+                  </button>
+                </div>
+
+                <div className="rounded-2xl bg-white border border-slate-200/90 p-4 text-xs text-slate-700 whitespace-pre-line leading-relaxed shadow-2xs">
+                  {whatsappTemplateMessage}
+                </div>
+              </div>
+
+              {/* Send on WhatsApp Button */}
+              <a
+                href={whatsappHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3.5 px-5 rounded-xl bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold shadow-lg shadow-blue-600/20 transition flex items-center justify-center gap-2"
+              >
+                <Send size={14} />
+                Envoyer sur WhatsApp
+              </a>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* =====================================================================
-          8. FINAL ORBITAL CTA BANNER
+          9. FINAL ORBITAL CTA BANNER
       ====================================================================== */}
       <section className="relative bg-gradient-to-b from-[#3B82F6] via-[#2563EB] to-[#1D4ED8] py-24 px-6 text-white overflow-hidden">
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -938,7 +1017,7 @@ export default function BookiLandingPage() {
       </section>
 
       {/* =====================================================================
-          9. FOOTER
+          10. FOOTER
       ====================================================================== */}
       <footer className="bg-slate-950 text-slate-400 py-10 px-6 text-xs">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -949,10 +1028,10 @@ export default function BookiLandingPage() {
             <span className="text-slate-500 font-normal ml-2">© 2026 Booki Tunisia.</span>
           </div>
           <div className="flex items-center gap-6">
-            <a href="#ecrans" className="hover:text-white transition">Aperçu App</a>
             <a href="#features" className="hover:text-white transition">Fonctionnalités</a>
             <a href="#pricing" className="hover:text-white transition">Tarifs</a>
             <a href="#faq" className="hover:text-white transition">FAQ</a>
+            <a href="#contact" className="hover:text-white transition">Appel 15 min</a>
             <Link href="/login" className="hover:text-white transition">Connexion</Link>
           </div>
         </div>
