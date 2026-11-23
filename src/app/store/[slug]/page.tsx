@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, Suspense, useMemo } from "react";
+import { useEffect, useState, Suspense, useMemo, useRef } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { safeHttpUrl } from "@/lib/safe-url";
 import { toast } from "sonner";
@@ -14,7 +14,6 @@ import {
   X,
   CheckCircle,
   Phone,
-  Sparkles,
   AlertCircle,
   Search,
   Ticket,
@@ -28,6 +27,7 @@ import {
   MessageSquare,
   ArrowRight,
   CreditCard,
+  ArrowUpRight,
 } from "lucide-react";
 
 interface BusinessSettings {
@@ -91,6 +91,7 @@ interface OrderSummary {
 function StoreContent() {
   const supabase = createClient();
   const params = useParams();
+  const router = useRouter();
   const slug = params?.slug as string;
 
   const [settings, setSettings] = useState<BusinessSettings | null>(null);
@@ -110,6 +111,7 @@ function StoreContent() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartHydrated, setCartHydrated] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<StoreProduct | null>(null);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -124,6 +126,9 @@ function StoreContent() {
   const [trackedOrder, setTrackedOrder] = useState<TrackedOrder | null>(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+
+  const [bioExpanded, setBioExpanded] = useState(false);
+  const touchStartRef = useRef<{ x: number; y: number; ignore: boolean } | null>(null);
 
   useEffect(() => {
     async function initStore() {
@@ -394,6 +399,28 @@ function StoreContent() {
     setTimeout(() => setCodeCopied(false), 2500);
   }
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement | null;
+    const isScrollable = Boolean(target?.closest("[data-no-swipe]"));
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      ignore: isScrollable || isCartOpen || isTrackingModalOpen || Boolean(selectedProduct),
+    };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current || touchStartRef.current.ignore) return;
+    const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
+    const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+
+    // Swipe right to switch back to Prendre RDV
+    if (dx > 90 && Math.abs(dx) > Math.abs(dy) * 1.8) {
+      router.push(`/book/${slug}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -420,11 +447,20 @@ function StoreContent() {
   const openTimeStr = settings.working_hours?.start || "09:00";
   const closeTimeStr = settings.working_hours?.end || "18:00";
 
+  const bioText =
+    design.welcome_subtitle ||
+    settings.description ||
+    "Retrouvez tous nos produits professionnels de soin et de beauté.";
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-32">
-      {/* HERO HEADER */}
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-32"
+    >
+      {/* COMPACT HERO HEADER */}
       <div
-        className="relative min-h-[330px] sm:min-h-[360px] flex items-end justify-start px-6 sm:px-12 pb-16 overflow-hidden border-b border-white/10"
+        className="relative pt-4 pb-11 px-4 sm:px-8 overflow-hidden"
         style={{ backgroundColor: primaryColor }}
       >
         {heroImageUrl ? (
@@ -434,132 +470,152 @@ function StoreContent() {
               alt={settings.name}
               className="w-full h-full object-cover scale-105 filter brightness-75"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-black/35" />
           </div>
         ) : (
           <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-900 via-slate-950 to-black" />
         )}
 
-        {/* Top Switcher & Quick Cart Trigger */}
-        <div className="absolute top-5 right-5 left-5 sm:right-12 sm:left-12 z-20 flex items-center justify-between gap-3">
-          <div className="inline-flex bg-black/30 backdrop-blur-md p-1 rounded-2xl border border-white/20 text-xs font-bold">
-            <Link
-              href={`/book/${slug}`}
-              className="px-3.5 py-1.5 rounded-xl text-white/90 hover:text-white flex items-center gap-1.5 transition"
-            >
-              <Calendar size={13} /> Prendre RDV
-            </Link>
-            <span className="px-3.5 py-1.5 rounded-xl bg-white text-slate-900 shadow-xs flex items-center gap-1.5">
-              <ShoppingBag size={13} /> Boutique
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsCartOpen(true)}
-            className="bg-white/95 hover:bg-white text-slate-900 px-3.5 py-2 rounded-2xl text-xs font-bold shadow-lg flex items-center gap-2 transition cursor-pointer"
-          >
-            <ShoppingCart size={14} style={{ color: primaryColor }} />
-            <span>Panier ({totalCartItemsCount})</span>
-          </button>
-        </div>
-
-        <div className="relative z-10 max-w-3xl w-full flex flex-col md:flex-row items-start md:items-end justify-between gap-6 pt-16">
-          <div className="flex items-start gap-4 sm:gap-5">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center shadow-2xl overflow-hidden shrink-0">
-              {storeImageUrl ? (
-                <img src={storeImageUrl} alt={settings.name} className="w-full h-full object-cover" />
-              ) : (
-                <Scissors size={36} className="text-white/90" />
-              )}
+        <div className="relative z-10 max-w-6xl mx-auto space-y-4">
+          {/* Top Switcher & Actions */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="inline-flex bg-black/35 backdrop-blur-md p-1 rounded-full border border-white/20 text-xs font-bold shadow-sm">
+              <Link
+                href={`/book/${slug}`}
+                className="px-3 sm:px-3.5 py-1.5 rounded-full text-white/90 hover:text-white flex items-center gap-1.5 transition"
+              >
+                <Calendar size={13} /> Prendre RDV
+              </Link>
+              <span className="px-3 sm:px-3.5 py-1.5 rounded-full bg-white text-slate-900 shadow-xs flex items-center gap-1.5">
+                <ShoppingBag size={13} /> Boutique
+              </span>
             </div>
 
-            <div className="space-y-2">
-              
-              <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white">
-                {settings.name}
-              </h1>
-              <p className="text-xs sm:text-sm text-white/90 max-w-xl font-normal leading-relaxed">
-                {design.welcome_subtitle ||
-                  settings.description ||
-                  "Retrouvez tous nos produits professionnels de soin et de beauté."}
-              </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTrackingError(null);
+                  setIsTrackingModalOpen(true);
+                }}
+                title="Suivre ma commande"
+                aria-label="Suivre ma commande"
+                className="bg-black/35 hover:bg-black/50 backdrop-blur-md text-white border border-white/20 px-3 py-2 rounded-full text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Ticket size={14} />
+                <span className="hidden sm:inline">Suivre</span>
+              </button>
 
-              <div className="flex items-center gap-2.5 text-xs text-white/95 font-medium pt-1 flex-wrap">
-                <span className="flex items-center gap-1.5 bg-white/15 px-3 py-1.5 rounded-xl backdrop-blur-md border border-white/20">
-                  <Clock size={13} /> {openTimeStr} - {closeTimeStr}
-                </span>
+              <button
+                type="button"
+                onClick={() => setIsCartOpen(true)}
+                className="bg-white/95 hover:bg-white text-slate-900 px-3 sm:px-3.5 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <ShoppingCart size={14} style={{ color: primaryColor }} />
+                <span>({totalCartItemsCount})</span>
+              </button>
+            </div>
+          </div>
 
-                {settings.location &&
-                  (safeMapsUrl ? (
-                    <a
-                      href={safeMapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl backdrop-blur-md transition border border-white/20"
-                    >
-                      <MapPin size={13} /> {settings.location}
-                    </a>
-                  ) : (
-                    <span className="flex items-center gap-1.5 bg-white/15 px-3 py-1.5 rounded-xl backdrop-blur-md border border-white/20">
-                      <MapPin size={13} /> {settings.location}
-                    </span>
-                  ))}
-
-                {cleanWhatsapp && (
-                  <a
-                    href={`https://wa.me/${cleanWhatsapp}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl backdrop-blur-md transition border border-white/20"
-                  >
-                    <Phone size={13} /> {settings.whatsapp_number}
-                  </a>
+          {/* Tight Avatar + Title Lockup */}
+          <div className="space-y-2.5 max-w-3xl">
+            <div className="flex items-center gap-3.5">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/15 backdrop-blur-xl border border-white/25 flex items-center justify-center shadow-xl overflow-hidden shrink-0">
+                {storeImageUrl ? (
+                  <img
+                    src={storeImageUrl}
+                    alt={settings.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Scissors size={26} className="text-white/90" />
                 )}
               </div>
+
+              <div className="min-w-0 space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/15 border border-white/20 text-[10px] font-bold text-white/95 backdrop-blur-sm">
+                  Click &amp; Collect au salon
+                </div>
+                <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white truncate">
+                  {settings.name}
+                </h1>
+              </div>
+            </div>
+
+            {/* Full-Width Compact Bio */}
+            <p
+              onClick={() => setBioExpanded((prev) => !prev)}
+              className={`text-xs sm:text-sm text-white/85 max-w-2xl leading-relaxed cursor-pointer ${
+                bioExpanded ? "" : "line-clamp-2"
+              }`}
+            >
+              {bioText}
+            </p>
+
+            {/* Single-Row Compact Metadata Strip */}
+            <div className="flex items-center gap-1.5 text-[11px] text-white/95 font-medium flex-wrap pt-0.5">
+              <span className="inline-flex items-center gap-1 bg-white/15 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/15">
+                <Clock size={11} /> {openTimeStr}–{closeTimeStr}
+              </span>
+
+              {settings.location &&
+                (safeMapsUrl ? (
+                  <a
+                    href={safeMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-full backdrop-blur-md transition border border-white/15"
+                  >
+                    <MapPin size={11} />
+                    <span className="truncate max-w-[160px] sm:max-w-none">{settings.location}</span>
+                    <ArrowUpRight size={10} className="opacity-75" />
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center gap-1 bg-white/15 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/15">
+                    <MapPin size={11} />
+                    <span className="truncate max-w-[160px] sm:max-w-none">{settings.location}</span>
+                  </span>
+                ))}
+
+              {cleanWhatsapp && (
+                <a
+                  href={`https://wa.me/${cleanWhatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-full backdrop-blur-md transition border border-white/15"
+                >
+                  <Phone size={11} /> {settings.whatsapp_number}
+                </a>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Corps Principal (-mt-6 overlap matching Book page) */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 -mt-6 relative z-20 space-y-8">
-        {/* Clean Search, Categories & Tracking Trigger Toolbar */}
-        <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="relative flex-1 sm:max-w-sm">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Rechercher un produit..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setTrackingError(null);
-                setIsTrackingModalOpen(true);
-              }}
-              style={{ borderColor: primaryColor, color: primaryColor }}
-              className="bg-white border-2 border-dashed py-2.5 px-4 rounded-2xl text-xs font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
-            >
-              <Ticket size={15} /> Suivre ma commande
-            </button>
+      {/* MAIN STOREFRONT */}
+      <main className="max-w-6xl mx-auto px-3.5 sm:px-6 -mt-6 relative z-20 space-y-5">
+        {/* Clean Search & Categories Toolbar */}
+        <div className="bg-white p-3.5 sm:p-4 rounded-3xl border border-slate-200/80 shadow-xl space-y-3">
+          <div className="relative">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Rechercher un produit..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200/90 rounded-2xl text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-slate-300 transition"
+            />
           </div>
 
           {categories.length > 1 && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            <div data-no-swipe className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
               {categories.map((cat) => (
                 <button
                   key={cat}
                   type="button"
                   onClick={() => setSelectedCategory(cat)}
                   style={selectedCategory === cat ? { backgroundColor: primaryColor } : {}}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-full text-[11px] font-bold transition whitespace-nowrap cursor-pointer ${
                     selectedCategory === cat
                       ? "text-white shadow-xs"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -572,89 +628,99 @@ function StoreContent() {
           )}
         </div>
 
-        {/* Grille de Produits */}
+        {/* Product Grid (2-col on mobile, 3-col on desktop) */}
         {filteredProducts.length === 0 ? (
-          <div className="bg-white rounded-3xl p-16 text-center text-slate-400 text-xs shadow-2xs space-y-2 border border-slate-100">
+          <div className="bg-white rounded-3xl p-14 text-center text-slate-400 text-xs shadow-2xs space-y-2 border border-slate-100">
             <ShoppingBag size={32} className="mx-auto text-slate-300" />
             <p>Aucun produit ne correspond à votre recherche.</p>
           </div>
         ) : (
           <div
-            className={`grid gap-6 ${
+            className={`grid gap-3 sm:gap-5 ${
               design.layout_style === "list"
                 ? "grid-cols-1"
-                : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+                : "grid-cols-2 lg:grid-cols-3"
             }`}
           >
             {filteredProducts.map((prod) => {
               const safeImg = safeHttpUrl(prod.image_url);
               const inCartItem = cart.find((c) => c.id === prod.id);
+              const hasDescription = Boolean(prod.description && prod.description.trim().length > 0);
 
               return (
                 <div
                   key={prod.id}
-                  className="bg-white rounded-3xl border border-slate-100 shadow-2xs overflow-hidden flex flex-col justify-between group hover:shadow-md transition"
+                  className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/70 shadow-2xs overflow-hidden flex flex-col justify-between group hover:shadow-md transition"
                 >
-                  <div>
+                  <div
+                    onClick={() => setSelectedProduct(prod)}
+                    className="cursor-pointer flex-1 flex flex-col"
+                  >
                     {safeImg ? (
-                      <div className="h-52 w-full overflow-hidden bg-slate-100 relative">
+                      <div className="aspect-square sm:aspect-[4/3] w-full overflow-hidden bg-slate-100 relative">
                         <img
                           src={safeImg}
                           alt={prod.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                         />
                         {prod.stock <= 3 && (
-                          <span className="absolute top-3 right-3 bg-rose-500 text-white text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                            Derniers articles
+                          <span className="absolute top-2 left-2 bg-rose-500/95 backdrop-blur-xs text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide shadow-sm">
+                            Plus que {prod.stock}
                           </span>
                         )}
                       </div>
                     ) : (
-                      <div className="h-40 bg-slate-100 flex items-center justify-center text-slate-400">
-                        <ShoppingBag size={32} />
+                      <div className="aspect-square sm:aspect-[4/3] bg-slate-100 flex items-center justify-center text-slate-300 relative">
+                        <ShoppingBag size={28} />
+                        {prod.stock <= 3 && (
+                          <span className="absolute top-2 left-2 bg-rose-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase">
+                            Plus que {prod.stock}
+                          </span>
+                        )}
                       </div>
                     )}
 
-                    <div className="p-5 space-y-2">
-                      <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
+                    <div className="p-3 sm:p-4 space-y-1 flex-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block truncate">
                         {prod.category || "Général"}
                       </span>
-                      <h3 className="font-bold text-sm text-slate-900">{prod.name}</h3>
-                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                        {prod.description || "Pas de description."}
-                      </p>
+                      <h3 className="font-bold text-xs sm:text-sm text-slate-900 line-clamp-2 leading-snug">
+                        {prod.name}
+                      </h3>
+                      {hasDescription && (
+                        <p className="hidden sm:line-clamp-2 text-xs text-slate-500 leading-relaxed pt-0.5">
+                          {prod.description}
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="p-5 pt-3 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 gap-2">
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase block">
-                        En stock ({prod.stock})
-                      </span>
-                      <span className="font-extrabold text-slate-900 text-sm">
-                        {Number(prod.price).toFixed(2)} TND
-                      </span>
-                    </div>
+                  <div className="px-3 pb-3 pt-2 sm:px-4 sm:pb-4 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/40">
+                    <span className="font-black text-slate-900 text-xs sm:text-sm whitespace-nowrap">
+                      {Number(prod.price).toFixed(0)} <span className="text-[10px] font-bold">TND</span>
+                    </span>
 
                     {inCartItem ? (
-                      <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-0.5 shadow-2xs">
                         <button
                           type="button"
                           onClick={() => updateQuantity(prod.id, -1)}
-                          className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
+                          aria-label="Diminuer la quantité"
+                          className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
                         >
-                          <Minus size={12} />
+                          <Minus size={11} />
                         </button>
-                        <span className="text-xs font-black w-6 text-center text-slate-900">
+                        <span className="text-[11px] sm:text-xs font-black w-5 text-center text-slate-900">
                           {inCartItem.quantity}
                         </span>
                         <button
                           type="button"
                           onClick={() => updateQuantity(prod.id, 1)}
-                          className="w-7 h-7 rounded-lg text-white flex items-center justify-center cursor-pointer"
+                          aria-label="Augmenter la quantité"
+                          className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg text-white flex items-center justify-center cursor-pointer"
                           style={{ backgroundColor: primaryColor }}
                         >
-                          <Plus size={12} />
+                          <Plus size={11} />
                         </button>
                       </div>
                     ) : (
@@ -662,9 +728,11 @@ function StoreContent() {
                         type="button"
                         onClick={() => addToCart(prod)}
                         style={{ backgroundColor: primaryColor }}
-                        className="text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm hover:opacity-90 transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                        aria-label={`Ajouter ${prod.name}`}
+                        className="text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold shadow-xs hover:opacity-90 transition flex items-center gap-1 active:scale-95 cursor-pointer"
                       >
-                        Ajouter <Plus size={14} />
+                        <span className="hidden sm:inline">Ajouter</span>
+                        <Plus size={14} />
                       </button>
                     )}
                   </div>
@@ -675,7 +743,79 @@ function StoreContent() {
         )}
       </main>
 
-      {/* STICKY BOTTOM CART BAR (When items in cart and drawer closed) */}
+      {/* PRODUCT QUICK-VIEW MODAL */}
+      {selectedProduct && (
+        <div
+          onClick={() => setSelectedProduct(null)}
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center z-50 sm:p-4 animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-200"
+          >
+            <div className="relative bg-slate-100 aspect-[4/3]">
+              {safeHttpUrl(selectedProduct.image_url) ? (
+                <img
+                  src={safeHttpUrl(selectedProduct.image_url)!}
+                  alt={selectedProduct.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                  <ShoppingBag size={42} />
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setSelectedProduct(null)}
+                aria-label="Fermer"
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 text-white backdrop-blur-md flex items-center justify-center cursor-pointer hover:bg-black/70 transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {selectedProduct.category || "Général"}
+                  </span>
+                  {selectedProduct.stock <= 3 && (
+                    <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
+                      Plus que {selectedProduct.stock} en stock
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-lg font-black text-slate-900">{selectedProduct.name}</h3>
+                <p className="text-base font-black" style={{ color: primaryColor }}>
+                  {Number(selectedProduct.price).toFixed(2)} TND
+                </p>
+              </div>
+
+              {selectedProduct.description && selectedProduct.description.trim() && (
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  {selectedProduct.description}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  addToCart(selectedProduct);
+                  setSelectedProduct(null);
+                }}
+                style={{ backgroundColor: primaryColor }}
+                className="w-full text-white py-3.5 rounded-2xl text-xs font-bold shadow-md hover:opacity-95 transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                Ajouter au panier <Plus size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STICKY BOTTOM CART BAR */}
       {totalCartItemsCount > 0 && !isCartOpen && (
         <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-2xl p-3.5 sm:px-8 animate-in slide-in-from-bottom duration-200">
           <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
@@ -739,7 +879,7 @@ function StoreContent() {
                   value={trackingCode}
                   onChange={(e) => setTrackingCode(e.target.value)}
                   placeholder="ex: BK-A1B2C3D4"
-                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-mono uppercase font-bold text-slate-900 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-mono uppercase font-bold text-slate-900 focus:outline-none focus:bg-white focus:border-slate-400"
                   required
                 />
               </div>
@@ -753,7 +893,7 @@ function StoreContent() {
                   value={trackingPhone}
                   onChange={(e) => setTrackingPhone(e.target.value)}
                   placeholder="+216..."
-                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-900 focus:outline-none"
+                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-slate-400"
                   required
                 />
               </div>
@@ -991,7 +1131,7 @@ function StoreContent() {
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
                     placeholder="ex: Amine Ben Ali"
-                    className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900"
+                    className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-slate-400"
                     required
                   />
                 </div>
@@ -1005,7 +1145,7 @@ function StoreContent() {
                     value={clientPhone}
                     onChange={(e) => setClientPhone(e.target.value)}
                     placeholder="ex: +216..."
-                    className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900"
+                    className="w-full border border-slate-200 bg-slate-50 p-3 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-slate-400"
                     required
                   />
                 </div>
@@ -1036,11 +1176,23 @@ function StoreContent() {
         </div>
       )}
 
-      <footer className="mt-16 text-center text-xs text-slate-400 space-y-1">
-        <p className="font-bold text-slate-600">
-          Propulsé par Booki<span style={{ color: primaryColor }}>.tn</span>
-        </p>
-        <p className="text-[11px]">Boutique en ligne et catalogue pour salons, spas &amp; studios.</p>
+      <footer className="mt-14 text-center text-xs text-slate-400 space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            setTrackingError(null);
+            setIsTrackingModalOpen(true);
+          }}
+          className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 underline underline-offset-4 cursor-pointer"
+        >
+          <Ticket size={12} /> Suivre ou annuler une commande
+        </button>
+        <div className="space-y-0.5">
+          <p className="font-bold text-slate-600">
+            Propulsé par Booki<span style={{ color: primaryColor }}>.tn</span>
+          </p>
+          <p className="text-[11px]">Boutique en ligne et catalogue pour salons, spas &amp; studios.</p>
+        </div>
       </footer>
     </div>
   );
