@@ -697,7 +697,7 @@ function StoreContent() {
 
                   <div className="px-3 pb-3 pt-2 sm:px-4 sm:pb-4 border-t border-slate-100 flex items-center justify-between gap-2 bg-slate-50/40">
                     <span className="font-black text-slate-900 text-xs sm:text-sm whitespace-nowrap">
-                      {Number(prod.price).toFixed(0)} <span className="text-[10px] font-bold">TND</span>
+                     {Number(prod.price).toFixed(2).replace(/\.00$/, "")} <span className="text-[10px] font-bold">TND</span>
                     </span>
 
                     {inCartItem ? (
