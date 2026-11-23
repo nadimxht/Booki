@@ -1,4 +1,330 @@
-lt();
+"use client";
+
+import { Suspense, useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { safeHttpUrl } from "@/lib/safe-url";
+import { buildGoogleCalendarUrl, downloadIcsReminder } from "@/lib/calendar-invite";
+import {
+  Clock,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  MessageSquare,
+  MapPin,
+  Phone,
+  ChevronRight,
+  ChevronLeft,
+  Scissors,
+  Tag,
+  X,
+  AlertCircle,
+  Download,
+  Store,
+  Search,
+  CreditCard,
+  Sun,
+  Sunset,
+  Check,
+  ArrowUpRight,
+} from "lucide-react";
+
+interface BusinessSettings {
+  business_id: string;
+  name: string;
+  slug: string;
+  booking_title?: string;
+  booking_subtitle?: string;
+  description?: string;
+  location?: string;
+  maps_url?: string;
+  whatsapp_number?: string;
+  hero_image_url?: string;
+  store_image?: string;
+  primary_color?: string;
+  color_palette?: string;
+  working_hours?: {
+    start?: string;
+    end?: string;
+    days?: number[];
+  };
+}
+
+interface Service {
+  id: string;
+  business_id: string;
+  name: string;
+  category: string;
+  duration_minutes: number;
+  price: number;
+}
+
+interface Staff {
+  id: string;
+  business_id: string;
+  name: string;
+  color_code: string;
+}
+
+interface BookingInterval {
+  start_time: string;
+  end_time: string;
+}
+
+interface PromoCode {
+  code: string;
+  discount_type: "percent" | "fixed";
+  discount_value: number;
+}
+
+function getTunisTodayStr(): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Tunis",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const y = parts.find((p) => p.type === "year")?.value || "2026";
+  const m = parts.find((p) => p.type === "month")?.value || "01";
+  const d = parts.find((p) => p.type === "day")?.value || "01";
+  return `${y}-${m}-${d}`;
+}
+
+function getTunisNowMinutes(): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Tunis",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const h = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+  const m = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+  return (h === 24 ? 0 : h) * 60 + m;
+}
+
+function addMinutesToTime(startTime: string, durationMins: number): string {
+  const [h, m] = startTime.split(":").map(Number);
+  const total = h * 60 + m + durationMins;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(
+    total % 60
+  ).padStart(2, "0")}`;
+}
+
+function formatFrenchDateLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return dateStr;
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function findNextOpenDate(
+  startFromStr: string,
+  allowedDays: number[],
+  closeMinutes: number,
+  nowMins: number,
+  todayStr: string
+): string {
+  const [y, m, d] = startFromStr.split("-").map(Number);
+  for (let offset = 0; offset < 21; offset++) {
+    const dt = new Date(Date.UTC(y, m - 1, d + offset, 12, 0, 0));
+    const dateStr = dt.toISOString().slice(0, 10);
+    const dayOfWeek = dt.getUTCDay();
+    if (!allowedDays.includes(dayOfWeek)) continue;
+    if (dateStr === todayStr && nowMins >= closeMinutes - 30) continue;
+    return dateStr;
+  }
+  return startFromStr;
+}
+
+function BookingPortalContent() {
+  const params = useParams();
+  const router = useRouter();
+  const slug = params.slug as string;
+
+  const [todayString, setTodayString] = useState(() => getTunisTodayStr());
+  const [settings, setSettings] = useState<BusinessSettings | null>(null);
+  const [services, setServices] = useState<Service[]>([]);
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [step, setStep] = useState(1);
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("Tous");
+
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+
+  const [selectedDate, setSelectedDate] = useState(() => getTunisTodayStr());
+  const [selectedTime, setSelectedTime] = useState("");
+  const [existingBookings, setExistingBookings] = useState<BookingInterval[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
+  const [currentMonthDate, setCurrentMonthDate] = useState(() => new Date());
+
+  const [clientName, setClientName] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+
+  const [promoInput, setPromoInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null);
+  const [promoError, setPromoError] = useState("");
+  const [applyingPromo, setApplyingPromo] = useState(false);
+
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [confirmedBookingId, setConfirmedBookingId] = useState<string>("");
+  const [confirmedEndTime, setConfirmedEndTime] = useState<string>("");
+  const [confirmedPrice, setConfirmedPrice] = useState<number | null>(null);
+  const [bookingError, setBookingError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const [bioExpanded, setBioExpanded] = useState(false);
+  const touchStartRef = useRef<{ x: number; y: number; ignore: boolean } | null>(null);
+
+  useEffect(() => {
+    const tunisToday = getTunisTodayStr();
+    setTodayString(tunisToday);
+
+    async function fetchPortalData() {
+      if (!slug) return;
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/public/book/portal?slug=${encodeURIComponent(slug)}`);
+        if (!res.ok) {
+          setSettings(null);
+          return;
+        }
+        const data = await res.json();
+        const loadedSettings: BusinessSettings | null = data.settings || null;
+        setSettings(loadedSettings);
+        setServices(data.services || []);
+        const loadedStaff: Staff[] = data.staffList || [];
+        setStaffList(loadedStaff);
+
+        if (loadedStaff.length === 1) {
+          setSelectedStaff(loadedStaff[0]);
+        }
+
+        if (loadedSettings) {
+          const allowed = loadedSettings.working_hours?.days || [1, 2, 3, 4, 5, 6];
+          const closeStr = loadedSettings.working_hours?.end || "18:00";
+          const [cH, cM] = closeStr.split(":").map(Number);
+          const closeMins = (Number.isNaN(cH) ? 18 : cH) * 60 + (Number.isNaN(cM) ? 0 : cM);
+          const bestDate = findNextOpenDate(
+            tunisToday,
+            allowed,
+            closeMins,
+            getTunisNowMinutes(),
+            tunisToday
+          );
+          setSelectedDate(bestDate);
+          const [bY, bM] = bestDate.split("-").map(Number);
+          setCurrentMonthDate(new Date(bY, bM - 1, 1));
+        }
+      } catch {
+        setSettings(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchPortalData();
+  }, [slug]);
+
+  useEffect(() => {
+    async function fetchStaffBookings() {
+      if (!selectedDate || !selectedStaff || !slug) {
+        setExistingBookings([]);
+        return;
+      }
+
+      setLoadingSlots(true);
+      try {
+        const res = await fetch(
+          `/api/public/book/portal?slug=${encodeURIComponent(slug)}&date=${encodeURIComponent(
+            selectedDate
+          )}&staffId=${encodeURIComponent(selectedStaff.id)}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setExistingBookings(data.busySlots || []);
+        } else {
+          setExistingBookings([]);
+        }
+      } catch {
+        setExistingBookings([]);
+      } finally {
+        setLoadingSlots(false);
+      }
+    }
+
+    fetchStaffBookings();
+  }, [selectedDate, selectedStaff, slug]);
+
+  const serviceCategories = useMemo(() => {
+    const cats = Array.from(
+      new Set(services.map((s) => (s.category || "Général").trim()).filter(Boolean))
+    );
+    return ["Tous", ...cats];
+  }, [services]);
+
+  const filteredServices = useMemo(() => {
+    const q = serviceSearch.trim().toLowerCase();
+    return services.filter((s) => {
+      const cat = (s.category || "Général").trim();
+      const matchCat = selectedCategory === "Tous" || cat === selectedCategory;
+      const matchSearch =
+        !q || s.name.toLowerCase().includes(q) || cat.toLowerCase().includes(q);
+      return matchCat && matchSearch;
+    });
+  }, [services, serviceSearch, selectedCategory]);
+
+  const handleApplyPromo = async () => {
+    setPromoError("");
+    const codeClean = promoInput.trim().toUpperCase();
+    if (!codeClean || !slug || !selectedService) return;
+
+    setApplyingPromo(true);
+    try {
+      const res = await fetch("/api/public/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug,
+          serviceId: selectedService.id,
+          promoCode: codeClean,
+          checkPromoOnly: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.promo) {
+        setPromoError(data.error || "Code promo invalide ou introuvable.");
+        setAppliedPromo(null);
+        return;
+      }
+      setAppliedPromo(data.promo);
+      setPromoInput("");
+    } catch {
+      setPromoError("Impossible de vérifier ce code promo.");
+    } finally {
+      setApplyingPromo(false);
+    }
+  };
+
+  const originalPrice = Number(selectedService?.price || 0);
+  let finalPrice = originalPrice;
+  if (appliedPromo) {
+    if (appliedPromo.discount_type === "percent") {
+      finalPrice = Math.max(0, originalPrice * (1 - appliedPromo.discount_value / 100));
+    } else {
+      finalPrice = Math.max(0, originalPrice - appliedPromo.discount_value);
+    }
+  }
+
+  const handleConfirmBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!settings || !selectedService || !selectedStaff) return;
 
     setSubmitting(true);
