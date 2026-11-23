@@ -1,314 +1,4 @@
-"use client";
-
-import { Suspense, useState, useEffect, useMemo } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { safeHttpUrl } from "@/lib/safe-url";
-import { buildGoogleCalendarUrl, downloadIcsReminder } from "@/lib/calendar-invite";
-import {
-  Clock,
-  Calendar as CalendarIcon,
-  CheckCircle2,
-  MessageSquare,
-  MapPin,
-  Phone,
-  ChevronRight,
-  ChevronLeft,
-  Sparkles,
-  Scissors,
-  Tag,
-  X,
-  AlertCircle,
-  Download,
-  Store,
-  Search,
-  CreditCard,
-  Sun,
-  Sunset,
-} from "lucide-react";
-
-interface BusinessSettings {
-  business_id: string;
-  name: string;
-  slug: string;
-  booking_title?: string;
-  booking_subtitle?: string;
-  description?: string;
-  location?: string;
-  maps_url?: string;
-  whatsapp_number?: string;
-  hero_image_url?: string;
-  store_image?: string;
-  primary_color?: string;
-  color_palette?: string;
-  working_hours?: {
-    start?: string;
-    end?: string;
-    days?: number[];
-  };
-}
-
-interface Service {
-  id: string;
-  business_id: string;
-  name: string;
-  category: string;
-  duration_minutes: number;
-  price: number;
-}
-
-interface Staff {
-  id: string;
-  business_id: string;
-  name: string;
-  color_code: string;
-}
-
-interface BookingInterval {
-  start_time: string;
-  end_time: string;
-}
-
-interface PromoCode {
-  code: string;
-  discount_type: "percent" | "fixed";
-  discount_value: number;
-}
-
-function getTunisTodayStr(): string {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Tunis",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const y = parts.find((p) => p.type === "year")?.value || "2026";
-  const m = parts.find((p) => p.type === "month")?.value || "01";
-  const d = parts.find((p) => p.type === "day")?.value || "01";
-  return `${y}-${m}-${d}`;
-}
-
-function getTunisNowMinutes(): number {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Tunis",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const h = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
-  const m = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
-  return (h === 24 ? 0 : h) * 60 + m;
-}
-
-function addMinutesToTime(startTime: string, durationMins: number): string {
-  const [h, m] = startTime.split(":").map(Number);
-  const total = h * 60 + m + durationMins;
-  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(
-    total % 60
-  ).padStart(2, "0")}`;
-}
-
-function findNextOpenDate(
-  startFromStr: string,
-  allowedDays: number[],
-  closeMinutes: number,
-  nowMins: number,
-  todayStr: string
-): string {
-  const [y, m, d] = startFromStr.split("-").map(Number);
-  for (let offset = 0; offset < 21; offset++) {
-    const dt = new Date(Date.UTC(y, m - 1, d + offset, 12, 0, 0));
-    const dateStr = dt.toISOString().slice(0, 10);
-    const dayOfWeek = dt.getUTCDay();
-    if (!allowedDays.includes(dayOfWeek)) continue;
-    if (dateStr === todayStr && nowMins >= closeMinutes - 30) continue;
-    return dateStr;
-  }
-  return startFromStr;
-}
-
-function BookingPortalContent() {
-  const params = useParams();
-  const slug = params.slug as string;
-
-  const [todayString, setTodayString] = useState(() => getTunisTodayStr());
-  const [settings, setSettings] = useState<BusinessSettings | null>(null);
-  const [services, setServices] = useState<Service[]>([]);
-  const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const [step, setStep] = useState(1);
-  const [serviceSearch, setServiceSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("Tous");
-
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
-  const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
-
-  const [selectedDate, setSelectedDate] = useState(() => getTunisTodayStr());
-  const [selectedTime, setSelectedTime] = useState("");
-  const [existingBookings, setExistingBookings] = useState<BookingInterval[]>([]);
-  const [loadingSlots, setLoadingSlots] = useState(false);
-
-  const [currentMonthDate, setCurrentMonthDate] = useState(() => new Date());
-
-  const [clientName, setClientName] = useState("");
-  const [clientPhone, setClientPhone] = useState("");
-  const [clientEmail, setClientEmail] = useState("");
-
-  const [promoInput, setPromoInput] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null);
-  const [promoError, setPromoError] = useState("");
-  const [applyingPromo, setApplyingPromo] = useState(false);
-
-  const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [confirmedBookingId, setConfirmedBookingId] = useState<string>("");
-  const [confirmedEndTime, setConfirmedEndTime] = useState<string>("");
-  const [confirmedPrice, setConfirmedPrice] = useState<number | null>(null);
-  const [bookingError, setBookingError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    const tunisToday = getTunisTodayStr();
-    setTodayString(tunisToday);
-
-    async function fetchPortalData() {
-      if (!slug) return;
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/public/book/portal?slug=${encodeURIComponent(slug)}`);
-        if (!res.ok) {
-          setSettings(null);
-          return;
-        }
-        const data = await res.json();
-        const loadedSettings: BusinessSettings | null = data.settings || null;
-        setSettings(loadedSettings);
-        setServices(data.services || []);
-        const loadedStaff: Staff[] = data.staffList || [];
-        setStaffList(loadedStaff);
-
-        if (loadedStaff.length === 1) {
-          setSelectedStaff(loadedStaff[0]);
-        }
-
-        if (loadedSettings) {
-          const allowed = loadedSettings.working_hours?.days || [1, 2, 3, 4, 5, 6];
-          const closeStr = loadedSettings.working_hours?.end || "18:00";
-          const [cH, cM] = closeStr.split(":").map(Number);
-          const closeMins = (Number.isNaN(cH) ? 18 : cH) * 60 + (Number.isNaN(cM) ? 0 : cM);
-          const bestDate = findNextOpenDate(
-            tunisToday,
-            allowed,
-            closeMins,
-            getTunisNowMinutes(),
-            tunisToday
-          );
-          setSelectedDate(bestDate);
-          const [bY, bM] = bestDate.split("-").map(Number);
-          setCurrentMonthDate(new Date(bY, bM - 1, 1));
-        }
-      } catch {
-        setSettings(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchPortalData();
-  }, [slug]);
-
-  useEffect(() => {
-    async function fetchStaffBookings() {
-      if (!selectedDate || !selectedStaff || !slug) {
-        setExistingBookings([]);
-        return;
-      }
-
-      setLoadingSlots(true);
-      try {
-        const res = await fetch(
-          `/api/public/book/portal?slug=${encodeURIComponent(slug)}&date=${encodeURIComponent(
-            selectedDate
-          )}&staffId=${encodeURIComponent(selectedStaff.id)}`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setExistingBookings(data.busySlots || []);
-        } else {
-          setExistingBookings([]);
-        }
-      } catch {
-        setExistingBookings([]);
-      } finally {
-        setLoadingSlots(false);
-      }
-    }
-
-    fetchStaffBookings();
-  }, [selectedDate, selectedStaff, slug]);
-
-  const serviceCategories = useMemo(() => {
-    const cats = Array.from(
-      new Set(services.map((s) => (s.category || "Général").trim()).filter(Boolean))
-    );
-    return ["Tous", ...cats];
-  }, [services]);
-
-  const filteredServices = useMemo(() => {
-    const q = serviceSearch.trim().toLowerCase();
-    return services.filter((s) => {
-      const cat = (s.category || "Général").trim();
-      const matchCat = selectedCategory === "Tous" || cat === selectedCategory;
-      const matchSearch =
-        !q || s.name.toLowerCase().includes(q) || cat.toLowerCase().includes(q);
-      return matchCat && matchSearch;
-    });
-  }, [services, serviceSearch, selectedCategory]);
-
-  const handleApplyPromo = async () => {
-    setPromoError("");
-    const codeClean = promoInput.trim().toUpperCase();
-    if (!codeClean || !slug || !selectedService) return;
-
-    setApplyingPromo(true);
-    try {
-      const res = await fetch("/api/public/book", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slug,
-          serviceId: selectedService.id,
-          promoCode: codeClean,
-          checkPromoOnly: true,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.promo) {
-        setPromoError(data.error || "Code promo invalide ou introuvable.");
-        setAppliedPromo(null);
-        return;
-      }
-      setAppliedPromo(data.promo);
-      setPromoInput("");
-    } catch {
-      setPromoError("Impossible de vérifier ce code promo.");
-    } finally {
-      setApplyingPromo(false);
-    }
-  };
-
-  const originalPrice = Number(selectedService?.price || 0);
-  let finalPrice = originalPrice;
-  if (appliedPromo) {
-    if (appliedPromo.discount_type === "percent") {
-      finalPrice = Math.max(0, originalPrice * (1 - appliedPromo.discount_value / 100));
-    } else {
-      finalPrice = Math.max(0, originalPrice - appliedPromo.discount_value);
-    }
-  }
-
-  const handleConfirmBooking = async (e: React.FormEvent) => {
-    e.preventDefault();
+lt();
     if (!settings || !selectedService || !selectedStaff) return;
 
     setSubmitting(true);
@@ -353,6 +43,28 @@ function BookingPortalContent() {
       setBookingError("Erreur réseau lors de la confirmation.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement | null;
+    const isScrollable = Boolean(target?.closest("[data-no-swipe]"));
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+      ignore: isScrollable,
+    };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current || touchStartRef.current.ignore) return;
+    const dx = e.changedTouches[0].clientX - touchStartRef.current.x;
+    const dy = e.changedTouches[0].clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+
+    // Swipe left to switch to Boutique
+    if (dx < -90 && Math.abs(dx) > Math.abs(dy) * 1.8) {
+      router.push(`/store/${slug}`);
     }
   };
 
@@ -465,11 +177,20 @@ function BookingPortalContent() {
     setCurrentMonthDate(new Date(ny, nm - 1, 1));
   };
 
+  const bioText =
+    settings.description ||
+    settings.booking_subtitle ||
+    "Réservez votre créneau en quelques secondes.";
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-32">
-      {/* HERO HEADER */}
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      className="min-h-screen bg-slate-50 text-slate-900 font-sans antialiased pb-32"
+    >
+      {/* COMPACT HERO HEADER */}
       <div
-        className="relative min-h-[330px] sm:min-h-[360px] flex items-end justify-start px-6 sm:px-12 pb-16 overflow-hidden border-b border-white/10"
+        className="relative pt-4 pb-11 px-4 sm:px-8 overflow-hidden"
         style={{ backgroundColor: primaryColor }}
       >
         {heroImageUrl ? (
@@ -479,87 +200,106 @@ function BookingPortalContent() {
               alt={settings.name}
               className="w-full h-full object-cover scale-105 filter brightness-75"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-black/35" />
           </div>
         ) : (
           <div className="absolute inset-0 z-0 bg-gradient-to-br from-slate-900 via-slate-950 to-black" />
         )}
 
-        {/* Top Switcher Bar inside Hero */}
-        <div className="absolute top-5 right-5 left-5 sm:right-12 sm:left-12 z-20 flex items-center justify-between gap-3">
-          <div className="inline-flex bg-black/30 backdrop-blur-md p-1 rounded-2xl border border-white/20 text-xs font-bold">
-            <span className="px-3.5 py-1.5 rounded-xl bg-white text-slate-900 shadow-xs flex items-center gap-1.5">
-              <CalendarIcon size={13} /> Prendre RDV
-            </span>
-            <Link
-              href={`/store/${slug}`}
-              className="px-3.5 py-1.5 rounded-xl text-white/90 hover:text-white flex items-center gap-1.5 transition"
-            >
-              <Store size={13} /> Boutique
-            </Link>
-          </div>
-        </div>
-
-        <div className="relative z-10 max-w-3xl w-full flex flex-col md:flex-row items-start md:items-end justify-between gap-6 pt-16">
-          <div className="flex items-start gap-4 sm:gap-5">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center shadow-2xl overflow-hidden shrink-0">
-              {storeImageUrl ? (
-                <img src={storeImageUrl} alt={settings.name} className="w-full h-full object-cover" />
-              ) : (
-                <Scissors size={36} className="text-white/90" />
-              )}
+        <div className="relative z-10 max-w-3xl mx-auto space-y-4">
+          {/* Top Switcher Bar */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="inline-flex bg-black/35 backdrop-blur-md p-1 rounded-full border border-white/20 text-xs font-bold shadow-sm">
+              <span className="px-3.5 py-1.5 rounded-full bg-white text-slate-900 shadow-xs flex items-center gap-1.5">
+                <CalendarIcon size={13} /> Prendre RDV
+              </span>
+              <Link
+                href={`/store/${slug}`}
+                className="px-3.5 py-1.5 rounded-full text-white/90 hover:text-white flex items-center gap-1.5 transition"
+              >
+                <Store size={13} /> Boutique
+              </Link>
             </div>
+          </div>
 
-            <div className="space-y-2">
-              
-              <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white">
-                {settings.name}
-              </h1>
-              <p className="text-xs sm:text-sm text-white/90 max-w-xl font-normal leading-relaxed">
-                {settings.description ||
-                  settings.booking_subtitle ||
-                  "Réservez votre créneau en quelques secondes."}
-              </p>
-
-              <div className="flex items-center gap-2.5 text-xs text-white/95 font-medium pt-1 flex-wrap">
-                <span className="flex items-center gap-1.5 bg-white/15 px-3 py-1.5 rounded-xl backdrop-blur-md border border-white/20">
-                  <Clock size={13} /> {openTimeStr} - {closeTimeStr}
-                </span>
-
-                {settings.location &&
-                  (safeMapsUrl ? (
-                    <a
-                      href={safeMapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl backdrop-blur-md transition border border-white/20"
-                    >
-                      <MapPin size={13} /> {settings.location}
-                    </a>
-                  ) : (
-                    <span className="flex items-center gap-1.5 bg-white/15 px-3 py-1.5 rounded-xl backdrop-blur-md border border-white/20">
-                      <MapPin size={13} /> {settings.location}
-                    </span>
-                  ))}
-
-                {cleanWhatsapp && (
-                  <a
-                    href={`https://wa.me/${cleanWhatsapp}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-xl backdrop-blur-md transition border border-white/20"
-                  >
-                    <Phone size={13} /> {settings.whatsapp_number}
-                  </a>
+          {/* Tight Avatar + Title Lockup */}
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-3.5">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/15 backdrop-blur-xl border border-white/25 flex items-center justify-center shadow-xl overflow-hidden shrink-0">
+                {storeImageUrl ? (
+                  <img
+                    src={storeImageUrl}
+                    alt={settings.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Scissors size={26} className="text-white/90" />
                 )}
               </div>
+
+              <div className="min-w-0 space-y-1">
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-[10px] font-bold text-emerald-200 backdrop-blur-sm">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Réservation instantanée
+                </div>
+                <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white truncate">
+                  {settings.name}
+                </h1>
+              </div>
+            </div>
+
+            {/* Full-Width Compact Bio */}
+            <p
+              onClick={() => setBioExpanded((prev) => !prev)}
+              className={`text-xs sm:text-sm text-white/85 max-w-2xl leading-relaxed cursor-pointer ${
+                bioExpanded ? "" : "line-clamp-2"
+              }`}
+            >
+              {bioText}
+            </p>
+
+            {/* Single-Row Compact Metadata Strip */}
+            <div className="flex items-center gap-1.5 text-[11px] text-white/95 font-medium flex-wrap pt-0.5">
+              <span className="inline-flex items-center gap-1 bg-white/15 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/15">
+                <Clock size={11} /> {openTimeStr}–{closeTimeStr}
+              </span>
+
+              {settings.location &&
+                (safeMapsUrl ? (
+                  <a
+                    href={safeMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-full backdrop-blur-md transition border border-white/15"
+                  >
+                    <MapPin size={11} />
+                    <span className="truncate max-w-[160px] sm:max-w-none">{settings.location}</span>
+                    <ArrowUpRight size={10} className="opacity-75" />
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center gap-1 bg-white/15 px-2.5 py-1 rounded-full backdrop-blur-md border border-white/15">
+                    <MapPin size={11} />
+                    <span className="truncate max-w-[160px] sm:max-w-none">{settings.location}</span>
+                  </span>
+                ))}
+
+              {cleanWhatsapp && (
+                <a
+                  href={`https://wa.me/${cleanWhatsapp}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 bg-white/15 hover:bg-white/25 px-2.5 py-1 rounded-full backdrop-blur-md transition border border-white/15"
+                >
+                  <Phone size={11} /> {settings.whatsapp_number}
+                </a>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* MAIN BOOKING CONTAINER */}
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 -mt-6 relative z-20">
+      <div className="max-w-3xl mx-auto px-3.5 sm:px-6 -mt-6 relative z-20">
         {bookingSuccess ? (
           <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/80 text-center shadow-xl space-y-6 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
@@ -569,7 +309,9 @@ function BookingPortalContent() {
               <h2 className="text-2xl font-black text-slate-900">Réservation Confirmée !</h2>
               <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
                 Votre rendez-vous est bien enregistré.
-                {clientEmail ? " Un e-mail de confirmation et un rappel 24h avant vous seront envoyés." : ""}
+                {clientEmail
+                  ? " Un e-mail de confirmation et un rappel 24h avant vous seront envoyés."
+                  : ""}
               </p>
             </div>
 
@@ -588,7 +330,8 @@ function BookingPortalContent() {
                 <strong>Avec :</strong> {selectedStaff?.name}
               </p>
               <p className="text-slate-600">
-                <strong>Date &amp; Heure :</strong> {selectedDate} • {selectedTime} → {confirmedEndTime}
+                <strong>Date &amp; Heure :</strong> {formatFrenchDateLabel(selectedDate)} ({selectedDate}) •{" "}
+                {selectedTime} → {confirmedEndTime}
               </p>
               {settings.location && (
                 <p className="text-slate-600 flex items-center justify-between gap-2">
@@ -666,46 +409,50 @@ function BookingPortalContent() {
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-8 shadow-xl space-y-6">
-            {/* Clickable Stepper */}
-            <div className="grid grid-cols-3 gap-2 pb-5 border-b border-slate-100 text-center">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="text-xs font-bold pb-2 border-b-2 transition cursor-pointer"
-                style={{
-                  borderColor: step === 1 ? primaryColor : "transparent",
-                  color: step === 1 ? primaryColor : "#64748b",
-                }}
-              >
-                1. Prestation
-              </button>
-              <button
-                type="button"
-                disabled={!selectedService}
-                onClick={() => selectedService && setStep(2)}
-                className="text-xs font-bold pb-2 border-b-2 transition disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                style={{
-                  borderColor: step === 2 ? primaryColor : "transparent",
-                  color: step === 2 ? primaryColor : "#64748b",
-                }}
-              >
-                2. Praticien &amp; Date
-              </button>
-              <button
-                type="button"
-                disabled={!selectedService || !selectedStaff || !selectedTime}
-                onClick={() =>
-                  selectedService && selectedStaff && selectedTime && setStep(3)
-                }
-                className="text-xs font-bold pb-2 border-b-2 transition disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                style={{
-                  borderColor: step === 3 ? primaryColor : "transparent",
-                  color: step === 3 ? primaryColor : "#64748b",
-                }}
-              >
-                3. Coordonnées
-              </button>
+          <div className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-7 shadow-xl space-y-5">
+            {/* Single-Line Progress Stepper */}
+            <div className="grid grid-cols-3 gap-1.5 pb-3.5 border-b border-slate-100">
+              {[
+                { num: 1, label: "Soin", done: Boolean(selectedService) && step > 1, disabled: false },
+                {
+                  num: 2,
+                  label: "Créneau",
+                  done: Boolean(selectedStaff && selectedTime) && step > 2,
+                  disabled: !selectedService,
+                },
+                {
+                  num: 3,
+                  label: "Infos",
+                  done: false,
+                  disabled: !selectedService || !selectedStaff || !selectedTime,
+                },
+              ].map((item) => {
+                const isActive = step === item.num;
+                return (
+                  <button
+                    key={item.num}
+                    type="button"
+                    disabled={item.disabled}
+                    onClick={() => !item.disabled && setStep(item.num)}
+                    style={{
+                      borderColor: isActive ? primaryColor : "transparent",
+                      color: isActive ? primaryColor : item.done ? "#0f172a" : "#64748b",
+                    }}
+                    className="flex items-center justify-center gap-1.5 text-xs font-bold pb-2.5 border-b-2 transition disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    <span
+                      className="w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center shrink-0 transition"
+                      style={{
+                        backgroundColor: isActive || item.done ? primaryColor : "#e2e8f0",
+                        color: isActive || item.done ? "#ffffff" : "#475569",
+                      }}
+                    >
+                      {item.done ? <Check size={11} strokeWidth={3} /> : item.num}
+                    </span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {bookingError && (
@@ -717,19 +464,22 @@ function BookingPortalContent() {
 
             {/* STEP 1 : SERVICES */}
             {step === 1 && (
-              <div className="space-y-5 animate-in fade-in duration-200">
-                <div className="space-y-1">
-                  <h2 className="text-lg font-bold text-slate-900">
+              <div className="space-y-4 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
                     {settings.booking_title || "Choisissez une prestation"}
                   </h2>
-                  <p className="text-xs text-slate-500">
-                    {settings.booking_subtitle ||
-                      "Sélectionnez le soin ou la prestation de votre choix pour continuer."}
-                  </p>
+                  <span className="text-[11px] font-semibold text-slate-400 shrink-0">
+                    {filteredServices.length} soin{filteredServices.length > 1 ? "s" : ""}
+                  </span>
                 </div>
 
-                {services.length > 4 && (
-                  <div className="space-y-3">
+                {settings.booking_subtitle && (
+                  <p className="text-xs text-slate-500 -mt-2">{settings.booking_subtitle}</p>
+                )}
+
+                {services.length > 3 && (
+                  <div className="space-y-2.5">
                     <div className="relative">
                       <Search
                         size={15}
@@ -740,12 +490,15 @@ function BookingPortalContent() {
                         value={serviceSearch}
                         onChange={(e) => setServiceSearch(e.target.value)}
                         placeholder="Rechercher une prestation..."
-                        className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200/90 rounded-2xl text-xs font-medium text-slate-900 focus:outline-none focus:bg-white focus:border-slate-300 transition"
                       />
                     </div>
 
                     {serviceCategories.length > 2 && (
-                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                      <div
+                        data-no-swipe
+                        className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar"
+                      >
                         {serviceCategories.map((cat) => (
                           <button
                             key={cat}
@@ -754,9 +507,9 @@ function BookingPortalContent() {
                             style={
                               selectedCategory === cat ? { backgroundColor: primaryColor } : {}
                             }
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition cursor-pointer ${
+                            className={`px-3.5 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition cursor-pointer ${
                               selectedCategory === cat
-                                ? "text-white shadow-2xs"
+                                ? "text-white shadow-xs"
                                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                             }`}
                           >
@@ -773,12 +526,13 @@ function BookingPortalContent() {
                     Aucun service disponible pour cette recherche.
                   </p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2.5">
                     {filteredServices.map((service) => {
                       const isChosen = selectedService?.id === service.id;
                       return (
-                        <div
+                        <button
                           key={service.id}
+                          type="button"
                           onClick={() => {
                             setSelectedService(service);
                             setSelectedTime("");
@@ -788,34 +542,34 @@ function BookingPortalContent() {
                           }}
                           style={{
                             borderColor: isChosen ? primaryColor : undefined,
+                            backgroundColor: isChosen ? `${primaryColor}08` : undefined,
                           }}
-                          className="bg-slate-50/80 hover:bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 transition cursor-pointer flex items-center justify-between gap-4 group shadow-2xs"
+                          className="w-full text-left bg-slate-50/80 hover:bg-white border border-slate-200/80 rounded-2xl p-3.5 sm:p-4 transition-all active:scale-[0.99] cursor-pointer flex items-center justify-between gap-3 group shadow-2xs hover:shadow-sm"
                         >
                           <div className="space-y-1 min-w-0">
                             <h3 className="font-bold text-xs sm:text-sm text-slate-900 truncate">
                               {service.name}
                             </h3>
-                            <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
-                              <span className="flex items-center gap-1">
-                                <Clock size={12} /> {service.duration_minutes} min
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
+                              <span className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-md border border-slate-200/70 text-slate-600">
+                                <Clock size={11} /> {service.duration_minutes} min
                               </span>
-                              <span>•</span>
-                              <span className="text-slate-600">{service.category || "Général"}</span>
+                              <span className="truncate">{service.category || "Général"}</span>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex items-center gap-2.5 shrink-0">
                             <span className="font-black text-slate-900 text-sm sm:text-base">
                               {service.price} TND
                             </span>
                             <div
-                              className="w-8 h-8 rounded-xl flex items-center justify-center transition text-white"
+                              className="w-8 h-8 rounded-full flex items-center justify-center transition text-white group-hover:translate-x-0.5"
                               style={{ backgroundColor: primaryColor }}
                             >
                               <ChevronRight size={16} />
                             </div>
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -825,38 +579,43 @@ function BookingPortalContent() {
 
             {/* STEP 2 : PRACTITIONER & DATE/TIME */}
             {step === 2 && (
-              <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="space-y-5 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="space-y-1">
-                    <h2 className="text-lg font-bold text-slate-900">
-                      Praticien, Date &amp; Horaire
+                  <div>
+                    <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
+                      Praticien &amp; Créneau
                     </h2>
-                    <p className="text-xs text-slate-500">
-                      Sélectionnez l&apos;expert et votre créneau de disponibilité.
+                    <p className="text-[11px] text-slate-500">
+                      {selectedService?.name} • {serviceDuration} min
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setStep(1)}
-                    className="text-xs font-bold text-slate-500 hover:text-slate-900 cursor-pointer shrink-0"
+                    className="text-xs font-bold text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-full transition cursor-pointer shrink-0"
                   >
                     ← Prestations
                   </button>
                 </div>
 
+                {/* Staff Selector */}
                 <div className="space-y-2">
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     Choisissez l&apos;expert
                   </label>
                   {staffList.length === 0 ? (
                     <p className="text-xs text-slate-400">Aucun membre d&apos;équipe enregistré.</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div
+                      data-no-swipe
+                      className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar sm:grid sm:grid-cols-3"
+                    >
                       {staffList.map((staff) => {
                         const isSelected = selectedStaff?.id === staff.id;
                         return (
-                          <div
+                          <button
                             key={staff.id}
+                            type="button"
                             onClick={() => {
                               setSelectedStaff(staff);
                               setSelectedTime("");
@@ -866,10 +625,10 @@ function BookingPortalContent() {
                               borderColor: isSelected ? primaryColor : "#e2e8f0",
                               backgroundColor: isSelected ? `${primaryColor}0d` : "#f8fafc",
                             }}
-                            className="border-2 rounded-2xl p-3.5 transition cursor-pointer flex items-center gap-3 shadow-2xs"
+                            className="border-2 rounded-2xl p-2.5 sm:p-3 transition cursor-pointer flex items-center gap-2.5 shrink-0 min-w-[155px] sm:min-w-0 text-left"
                           >
                             <div
-                              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
+                              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs"
                               style={{ backgroundColor: staff.color_code || primaryColor }}
                             >
                               {staff.name.substring(0, 2).toUpperCase()}
@@ -882,7 +641,7 @@ function BookingPortalContent() {
                                 {isSelected ? "Sélectionné ✓" : "Disponible"}
                               </p>
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>
@@ -890,12 +649,12 @@ function BookingPortalContent() {
                 </div>
 
                 {selectedStaff && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-slate-100">
                     {/* Calendar */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                          Sélectionnez un jour
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Date souhaitée
                         </span>
                         <div className="flex items-center gap-1">
                           <button
@@ -940,6 +699,7 @@ function BookingPortalContent() {
                           const isAllowedDay = allowedDays.includes(dayOfWeek);
                           const isDisabled = isPast || !isAllowedDay;
                           const isSelected = selectedDate === dateStr;
+                          const isToday = dateStr === todayString;
 
                           return (
                             <button
@@ -964,13 +724,19 @@ function BookingPortalContent() {
                                   : "#334155",
                                 borderColor: isSelected ? primaryColor : "#e2e8f0",
                               }}
-                              className={`h-9 rounded-xl text-xs font-bold border transition flex items-center justify-center ${
+                              className={`relative h-9 rounded-xl text-xs font-bold border transition flex items-center justify-center ${
                                 isDisabled
                                   ? "cursor-not-allowed opacity-60"
-                                  : "cursor-pointer hover:border-indigo-500"
+                                  : "cursor-pointer hover:border-slate-400"
                               }`}
                             >
                               {dayDate.getDate()}
+                              {isToday && !isSelected && (
+                                <span
+                                  className="absolute bottom-1 w-1 h-1 rounded-full"
+                                  style={{ backgroundColor: primaryColor }}
+                                />
+                              )}
                             </button>
                           );
                         })}
@@ -979,9 +745,15 @@ function BookingPortalContent() {
 
                     {/* Grouped Morning / Afternoon Slots */}
                     <div className="space-y-3">
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                        Créneaux disponibles ({serviceDuration} min)
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Créneaux • <span className="capitalize text-slate-800">{formatFrenchDateLabel(selectedDate)}</span>
+                        </label>
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {serviceDuration} min
+                        </span>
+                      </div>
+
                       {loadingSlots ? (
                         <p className="text-xs text-slate-500 animate-pulse py-4">
                           Recherche des disponibilités...
@@ -1023,7 +795,7 @@ function BookingPortalContent() {
                                         color: isSelected ? "#ffffff" : "#334155",
                                         borderColor: isSelected ? primaryColor : "#e2e8f0",
                                       }}
-                                      className="py-2 text-xs font-bold rounded-xl border transition shadow-2xs cursor-pointer"
+                                      className="py-2 text-xs font-bold rounded-xl border transition shadow-2xs cursor-pointer active:scale-95"
                                     >
                                       {time}
                                     </button>
@@ -1054,7 +826,7 @@ function BookingPortalContent() {
                                         color: isSelected ? "#ffffff" : "#334155",
                                         borderColor: isSelected ? primaryColor : "#e2e8f0",
                                       }}
-                                      className="py-2 text-xs font-bold rounded-xl border transition shadow-2xs cursor-pointer"
+                                      className="py-2 text-xs font-bold rounded-xl border transition shadow-2xs cursor-pointer active:scale-95"
                                     >
                                       {time}
                                     </button>
@@ -1079,20 +851,20 @@ function BookingPortalContent() {
                 className="space-y-5 animate-in fade-in duration-200"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <div className="space-y-1">
-                    <h2 className="text-lg font-bold text-slate-900">
-                      Vos coordonnées &amp; Code Promo
+                  <div>
+                    <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
+                      Vos coordonnées
                     </h2>
-                    <p className="text-xs text-slate-500">
-                      Dernière étape pour valider votre rendez-vous chez {settings.name}.
+                    <p className="text-[11px] text-slate-500">
+                      Finalisez votre rendez-vous chez {settings.name}.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setStep(2)}
-                    className="text-xs font-bold text-slate-500 hover:text-slate-900 cursor-pointer shrink-0"
+                    className="text-xs font-bold text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-full transition cursor-pointer shrink-0"
                   >
-                    ← Modifier horaire
+                    ← Horaire
                   </button>
                 </div>
 
@@ -1121,8 +893,9 @@ function BookingPortalContent() {
                     <strong>Praticien :</strong> {selectedStaff?.name}
                   </p>
                   <p>
-                    <strong>Date &amp; Heure :</strong> {selectedDate} • {selectedTime} →{" "}
-                    {addMinutesToTime(selectedTime, serviceDuration)}
+                    <strong>Date &amp; Heure :</strong>{" "}
+                    <span className="capitalize">{formatFrenchDateLabel(selectedDate)}</span> •{" "}
+                    {selectedTime} → {addMinutesToTime(selectedTime, serviceDuration)}
                   </p>
 
                   <div className="pt-2 border-t border-slate-200/60 space-y-1.5">
@@ -1135,7 +908,7 @@ function BookingPortalContent() {
                         value={promoInput}
                         onChange={(e) => setPromoInput(e.target.value)}
                         placeholder="Entrez votre code"
-                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 uppercase"
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 uppercase focus:outline-none focus:border-slate-400"
                       />
                       <button
                         type="button"
@@ -1170,9 +943,9 @@ function BookingPortalContent() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3.5">
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                       Nom complet *
                     </label>
                     <input
@@ -1181,12 +954,12 @@ function BookingPortalContent() {
                       onChange={(e) => setClientName(e.target.value)}
                       required
                       placeholder="ex: Youssef Ben Amor"
-                      className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-900 bg-slate-50 focus:outline-none transition"
+                      className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-900 bg-slate-50 focus:bg-white focus:border-slate-400 focus:outline-none transition"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                       Numéro de téléphone (WhatsApp) *
                     </label>
                     <input
@@ -1195,20 +968,20 @@ function BookingPortalContent() {
                       onChange={(e) => setClientPhone(e.target.value)}
                       required
                       placeholder="+216 98 000 000"
-                      className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-900 bg-slate-50 focus:outline-none transition"
+                      className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-900 bg-slate-50 focus:bg-white focus:border-slate-400 focus:outline-none transition"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      E-mail (Recommandé — rappel automatique 24h avant)
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                      E-mail (Recommandé — rappel 24h avant)
                     </label>
                     <input
                       type="email"
                       value={clientEmail}
                       onChange={(e) => setClientEmail(e.target.value)}
                       placeholder="votre@email.com"
-                      className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-900 bg-slate-50 focus:outline-none transition"
+                      className="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium text-slate-900 bg-slate-50 focus:bg-white focus:border-slate-400 focus:outline-none transition"
                     />
                   </div>
 
@@ -1255,10 +1028,7 @@ function BookingPortalContent() {
                 <p className="text-[10px] text-slate-500 truncate">
                   {selectedStaff ? `Avec ${selectedStaff.name}` : "Choisissez l'expert"}
                   {selectedDate && selectedTime
-                    ? ` • ${selectedDate} (${selectedTime} → ${addMinutesToTime(
-                        selectedTime,
-                        serviceDuration
-                      )})`
+                    ? ` • ${formatFrenchDateLabel(selectedDate)} (${selectedTime})`
                     : ""}
                 </p>
               </div>
@@ -1304,7 +1074,7 @@ function BookingPortalContent() {
         </div>
       )}
 
-      <footer className="mt-16 text-center text-xs text-slate-400 space-y-1">
+      <footer className="mt-14 text-center text-xs text-slate-400 space-y-1">
         <p className="font-bold text-slate-600">
           Propulsé par Booki<span style={{ color: primaryColor }}>.tn</span>
         </p>
