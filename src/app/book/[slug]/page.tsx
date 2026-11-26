@@ -563,15 +563,7 @@ function BookingPortalContent() {
                 )}
               </div>
 
-              <div className="min-w-0 space-y-1">
-                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-[10px] font-bold text-emerald-200 backdrop-blur-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Réservation instantanée
-                </div>
-                <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white truncate">
-                  {settings.name}
-                </h1>
-              </div>
+             
             </div>
 
             {/* Full-Width Compact Bio */}
