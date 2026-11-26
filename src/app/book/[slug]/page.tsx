@@ -562,6 +562,12 @@ function BookingPortalContent() {
                   <Scissors size={26} className="text-white/90" />
                 )}
               </div>
+              <div className="min-w-0 space-y-1">
+              
+                <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white truncate">
+                  {settings.name}
+                </h1>
+              </div>
 
              
             </div>
